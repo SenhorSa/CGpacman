@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebGL</title>
+</head>
+<body onload="Start()">
+
+    <img id="boxImage" src="./Imagens/boxImage.png" width="0" height="0"></img>
+    <!-- Scripts que vao correr na pagina -->
+    <!-- Biblioteca de matematica-->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/14.8.1/math.js"></script>
+
+    <!-- Script com matrizes de rotação-->
+    <script src="./JavaScript/matrizes.js"></script>
+    <!-- Script com matrizes relativas à camara-->
+    <script src="./JavaScript/camara.js"></script>
+    
+    <script src="./JavaScript/shaders.js"></script>
+    <script src="./JavaScript/app.js"></script>
+    
+    <p>
+        Estás a visualizar a aplicacao grafica baseada em <b>WebGL</b>   
+        <a href="threejs.html">Clica aqui para veres a aplicacao baseada em threejs.</a>
+    </p>
+</body>
+</html>
