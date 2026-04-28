@@ -13,7 +13,7 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 appElement.appendChild(renderer.domElement);
 
 const mazeRows = 23;
-const mazeColumns = 27;
+const mazeColumns = 33;
 
 function createFilledGrid(rows, columns, fillValue) {
     return Array.from({ length: rows }, () => Array.from({ length: columns }, () => fillValue));
