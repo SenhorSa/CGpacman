@@ -231,6 +231,14 @@ const borderGuideMaterial = new THREE.LineBasicMaterial({ color: 0xe5e7eb });
 const mazeGroup = new THREE.Group();
 scene.add(mazeGroup);
 
+const playerSpotlight = new THREE.Mesh(
+    new THREE.CircleGeometry(0.18, 24),
+    new THREE.MeshBasicMaterial({ color: 0xfacc15 })
+);
+playerSpotlight.rotation.x = -Math.PI / 2;
+playerSpotlight.position.y = 0.06;
+scene.add(playerSpotlight);
+
 const floor = new THREE.Mesh(
     new THREE.PlaneGeometry(mazeWidth * tileSize, mazeHeight * tileSize),
     floorMaterialPerspective
@@ -281,6 +289,7 @@ perspectiveCamera.position.set(1.5, 1.0, 1.5);
 perspectiveCamera.rotation.order = 'YXZ';
 
 const orthoSize = Math.max(mazeWidth, mazeHeight) * 0.6;
+const orthographicCameraHeight = 18;
 const orthographicCamera = new THREE.OrthographicCamera(
     -orthoSize,
     orthoSize,
@@ -289,7 +298,7 @@ const orthographicCamera = new THREE.OrthographicCamera(
     0.1,
     100
 );
-orthographicCamera.position.set(mazeCenterX, 18, mazeCenterZ);
+orthographicCamera.position.set(mazeCenterX, orthographicCameraHeight, mazeCenterZ);
 orthographicCamera.lookAt(mazeCenterX, 0, mazeCenterZ);
 
 let activeCamera = perspectiveCamera;
@@ -376,6 +385,43 @@ function updatePerspectiveCamera(deltaSeconds) {
     perspectiveCamera.position.y = playerEyeHeight;
     perspectiveCamera.rotation.y = controls.yaw;
     perspectiveCamera.rotation.x = controls.pitch;
+}
+
+function updateOrthographicMovement(deltaSeconds) {
+    const movementVector = new THREE.Vector3();
+
+    if (controls.forward) {
+        movementVector.z -= 1;
+    }
+
+    if (controls.backward) {
+        movementVector.z += 1;
+    }
+
+    if (controls.left) {
+        movementVector.x -= 1;
+    }
+
+    if (controls.right) {
+        movementVector.x += 1;
+    }
+
+    if (movementVector.lengthSq() > 0) {
+        movementVector.normalize();
+        const movementStep = moveSpeed * deltaSeconds;
+        const nextX = perspectiveCamera.position.x + movementVector.x * movementStep;
+        const nextZ = perspectiveCamera.position.z + movementVector.z * movementStep;
+
+        if (isWalkableAt(nextX, perspectiveCamera.position.z)) {
+            perspectiveCamera.position.x = nextX;
+        }
+
+        if (isWalkableAt(perspectiveCamera.position.x, nextZ)) {
+            perspectiveCamera.position.z = nextZ;
+        }
+    }
+
+    perspectiveCamera.position.y = playerEyeHeight;
 }
 
 function activatePerspectiveView() {
@@ -514,8 +560,13 @@ function animate() {
     if (activeView === 'perspective') {
         updatePerspectiveCamera(deltaSeconds);
     } else {
+        updateOrthographicMovement(deltaSeconds);
+        orthographicCamera.position.y = orthographicCameraHeight;
         orthographicCamera.lookAt(mazeCenterX, 0, mazeCenterZ);
     }
+
+    playerSpotlight.position.x = perspectiveCamera.position.x;
+    playerSpotlight.position.z = perspectiveCamera.position.z;
 
     renderer.render(scene, activeCamera);
     requestAnimationFrame(animate);
