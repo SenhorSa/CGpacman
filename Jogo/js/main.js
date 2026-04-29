@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { createMaze, getMazeData } from './maze.js';
-import { createPlayer, updatePlayer, playerSettings } from './characters.js';
+import { createGhosts, createPlayer, updatePlayer, playerSettings } from './characters.js';
 
 const appElement = document.getElementById('app');
 
@@ -64,6 +64,8 @@ const { mazeLayout, mazeGroup, floor, ceiling } = createMaze({
 });
 
 const { mazeWidth, mazeHeight, mazeCenterX, mazeCenterZ } = getMazeData(mazeLayout, tileSize);
+
+const ghosts = createGhosts({ scene, mazeCenterX, mazeCenterZ, tileSize, wallHeight });
 
 const playerSpotlight = new THREE.Mesh(
     new THREE.CircleGeometry(0.18, 24),
@@ -233,7 +235,8 @@ function animate() {
         controls,
         camera: perspectiveCamera,
         mazeLayout,
-        tileSize
+        tileSize,
+        ghosts
     });
 
     if (activeView === 'orthographic') {
