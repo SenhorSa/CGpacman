@@ -68,6 +68,40 @@ function createPacmanDarkDeceptionLayout(rows, columns) {
     return layout;
 }
 
+function createSymmetricMazeLayout(rows, columns) {
+    const blueprint = [
+        '#################################',
+        '#.....#.....#...#.....#.........#',
+        '#.###.#.###.#.#.#.###.#.###.#.#.#',
+        '#.#...#.#...#.#.#...#.#...#.#.#.#',
+        '#.#.###.#.###.#.###.#.###.#.#.#.#',
+        '#.#.#...#.....#.....#...#.#.#.#.#',
+        '#.#.#.#####.#####.#####.#.#.#.#.#',
+        '#.........#...#...#.........#...#',
+        '###.#####.###.#.###.#####.###...#',
+        '#...#...#.....#.....#...#...#...#',
+        '#.###.#.###.#####.###.#.###.#.###',
+        '#.....#...............#.....#...#',
+        '#.###.#.###.#####.###.#.###.#...#',
+        '#...#...#.....#.....#...#...#...#',
+        '###.#####.###.#.###.#####.###.#.#',
+        '#.........#...#...#.....#.....#.#',
+        '#.#.#####.#.#####.#####.#.#####.#',
+        '#.#.#...#.#.....#.....#.#...#.#.#',
+        '#.#.###.#.###.#.#.###.#.###.#.#.#',
+        '#.#...#.#...#.#.#...#.#...#.#...#',
+        '#.###.#.###.#.#.#.###.#.###.#.###',
+        '#...........#...#.....#.........#',
+        '#################################'
+    ];
+
+    if (rows !== blueprint.length || columns !== blueprint[0].length) {
+        return createPacmanDarkDeceptionLayout(rows, columns);
+    }
+
+    return blueprint.map((row) => Array.from(row, (cell) => (cell === '#' ? 1 : 0)));
+}
+
 function isInsideGrid(layout, row, column) {
     return row >= 0 && row < layout.length && column >= 0 && column < layout[0].length;
 }
@@ -224,8 +258,7 @@ export function createMaze({
     const borderGuideMaterial = materials.borderGuideMaterial
         ?? new THREE.LineBasicMaterial({ color: 0xe5e7eb });
 
-    const baseMazeLayout = createPacmanDarkDeceptionLayout(mazeRows, mazeColumns);
-    const mazeLayout = buildPlayableMaze(baseMazeLayout);
+    const mazeLayout = createSymmetricMazeLayout(mazeRows, mazeColumns);
 
     const { mazeWidth, mazeHeight, mazeCenterX, mazeCenterZ } = getMazeData(mazeLayout, tileSize);
 
