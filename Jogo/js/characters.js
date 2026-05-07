@@ -10,8 +10,23 @@ export const playerSettings = {
 
 export const ghostSettings = {
     radiusRatio: 0.22,
-    spacingUnits: 2
+    spacingUnits: 2,
+    moveSpeed: 1.15
 };
+
+export const coinSettings = {
+    radiusRatio: 0.11,
+    baseHeight: 0.2,
+    floatAmplitude: 0.06,
+    floatSpeed: 2.4
+};
+
+const cardinalDirections = [
+    { row: -1, column: 0 },
+    { row: 1, column: 0 },
+    { row: 0, column: -1 },
+    { row: 0, column: 1 }
+];
 
 function createControls() {
     return {
@@ -28,50 +43,99 @@ function createControls() {
     };
 }
 
-export function createPlayer({ camera, mazeLayout, tileSize }) {
-    const controls = createControls();
-    const spawnCell = findSpawnCell(mazeLayout);
-
-    camera.position.set(
-        spawnCell.column * tileSize,
-        playerSettings.playerEyeHeight,
-        spawnCell.row * tileSize
-    );
-    camera.rotation.order = 'YXZ';
-
-    return { controls };
+function isInsideGrid(layout, row, column) {
+    return row >= 0 && row < layout.length && column >= 0 && column < layout[0].length;
 }
 
-export function createGhosts({ scene, mazeCenterX, mazeCenterZ, tileSize, wallHeight }) {
-    const ghostRadius = tileSize * ghostSettings.radiusRatio;
-    const ghostHeight = (wallHeight + 0.15) * 0.5;
-    const spacing = tileSize * ghostSettings.spacingUnits;
-    const ghostGeometry = new THREE.SphereGeometry(ghostRadius, 32, 24);
+function worldToCell(worldX, worldZ, tileSize) {
+    return {
+        row: Math.round(worldZ / tileSize),
+        column: Math.round(worldX / tileSize)
+    };
+}
 
-    const blueGhost = new THREE.Mesh(
-        ghostGeometry,
-        new THREE.MeshStandardMaterial({ color: 0x2563eb, roughness: 0.45, metalness: 0.05 })
-    );
-    blueGhost.userData.radius = ghostRadius;
-    blueGhost.position.set(mazeCenterX - spacing, ghostHeight, mazeCenterZ);
+function isWalkableCell(layout, row, column) {
+    return isInsideGrid(layout, row, column) && layout[row][column] === 0;
+}
 
-    const redGhost = new THREE.Mesh(
-        ghostGeometry,
-        new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.45, metalness: 0.05 })
-    );
-    redGhost.userData.radius = ghostRadius;
-    redGhost.position.set(mazeCenterX + spacing, ghostHeight, mazeCenterZ);
+function directionKey(direction) {
+    return `${direction.row},${direction.column}`;
+}
 
-    const greenGhost = new THREE.Mesh(
-        ghostGeometry,
-        new THREE.MeshStandardMaterial({ color: 0x16a34a, roughness: 0.45, metalness: 0.05 })
-    );
-    greenGhost.userData.radius = ghostRadius;
-    greenGhost.position.set(mazeCenterX, ghostHeight, mazeCenterZ);
+function oppositeDirection(direction) {
+    return {
+        row: -direction.row,
+        column: -direction.column
+    };
+}
 
-    scene.add(blueGhost, redGhost, greenGhost);
+function getAvailableDirections(mazeLayout, row, column) {
+    const directions = [];
 
-    return [blueGhost, redGhost, greenGhost];
+    for (const direction of cardinalDirections) {
+        const nextRow = row + direction.row;
+        const nextColumn = column + direction.column;
+
+        if (isWalkableCell(mazeLayout, nextRow, nextColumn)) {
+            directions.push(direction);
+        }
+    }
+
+    return directions;
+}
+
+function isNearCellCenter(position, tileSize) {
+    const cellX = Math.round(position.x / tileSize) * tileSize;
+    const cellZ = Math.round(position.z / tileSize) * tileSize;
+    const threshold = tileSize * 0.08;
+
+    return Math.abs(position.x - cellX) <= threshold && Math.abs(position.z - cellZ) <= threshold;
+}
+
+function pickGhostDirection(ghost, mazeLayout, tileSize) {
+    const { row, column } = worldToCell(ghost.position.x, ghost.position.z, tileSize);
+    const availableDirections = getAvailableDirections(mazeLayout, row, column);
+
+    if (availableDirections.length === 0) {
+        return ghost.userData.direction ?? { row: 0, column: 0 };
+    }
+
+    const reverseDirection = oppositeDirection(ghost.userData.direction ?? { row: 0, column: 0 });
+    const alternatives = availableDirections.filter((direction) => directionKey(direction) !== directionKey(reverseDirection));
+    const candidates = alternatives.length > 0 ? alternatives : availableDirections;
+
+    return candidates[Math.floor(Math.random() * candidates.length)];
+}
+
+function tryMoveGhost(ghost, mazeLayout, tileSize, deltaSeconds) {
+    const currentDirection = ghost.userData.direction ?? { row: 0, column: 0 };
+
+    if (currentDirection.row === 0 && currentDirection.column === 0) {
+        ghost.userData.direction = pickGhostDirection(ghost, mazeLayout, tileSize);
+    }
+
+    if (isNearCellCenter(ghost.position, tileSize)) {
+        if (ghost.userData.canTurn ?? true) {
+            ghost.userData.direction = pickGhostDirection(ghost, mazeLayout, tileSize);
+            ghost.userData.canTurn = false;
+        }
+    } else {
+        ghost.userData.canTurn = true;
+    }
+
+    const speed = ghost.userData.speed ?? ghostSettings.moveSpeed;
+    const step = speed * deltaSeconds;
+    const nextX = ghost.position.x + ghost.userData.direction.column * step;
+    const nextZ = ghost.position.z + ghost.userData.direction.row * step;
+    const nextCell = worldToCell(nextX, nextZ, tileSize);
+
+    if (isWalkableCell(mazeLayout, nextCell.row, nextCell.column)) {
+        ghost.position.x = nextX;
+        ghost.position.z = nextZ;
+        return;
+    }
+
+    ghost.userData.direction = pickGhostDirection(ghost, mazeLayout, tileSize);
 }
 
 function collidesWithGhosts(ghosts, nextX, nextZ, playerRadius) {
@@ -93,15 +157,11 @@ function collidesWithGhosts(ghosts, nextX, nextZ, playerRadius) {
     return false;
 }
 
-function canMoveTo(mazeLayout, ghosts, nextX, nextZ) {
-    if (!isWalkableAt(mazeLayout, nextX, nextZ, playerSettings.playerRadius)) {
-        return false;
-    }
-
-    return !collidesWithGhosts(ghosts, nextX, nextZ, playerSettings.playerRadius);
+function canMoveTo(mazeLayout, nextX, nextZ) {
+    return isWalkableAt(mazeLayout, nextX, nextZ, playerSettings.playerRadius);
 }
 
-function updatePerspectiveCamera(deltaSeconds, controls, camera, mazeLayout, ghosts) {
+function updatePerspectiveCamera(deltaSeconds, controls, camera, mazeLayout) {
     const forwardVector = new THREE.Vector3(-Math.sin(controls.yaw), 0, -Math.cos(controls.yaw));
     const rightVector = new THREE.Vector3(Math.cos(controls.yaw), 0, -Math.sin(controls.yaw));
     const movementVector = new THREE.Vector3();
@@ -128,11 +188,11 @@ function updatePerspectiveCamera(deltaSeconds, controls, camera, mazeLayout, gho
         const nextX = camera.position.x + movementVector.x * movementStep;
         const nextZ = camera.position.z + movementVector.z * movementStep;
 
-        if (canMoveTo(mazeLayout, ghosts, nextX, camera.position.z)) {
+        if (canMoveTo(mazeLayout, nextX, camera.position.z)) {
             camera.position.x = nextX;
         }
 
-        if (canMoveTo(mazeLayout, ghosts, camera.position.x, nextZ)) {
+        if (canMoveTo(mazeLayout, camera.position.x, nextZ)) {
             camera.position.z = nextZ;
         }
     }
@@ -142,7 +202,7 @@ function updatePerspectiveCamera(deltaSeconds, controls, camera, mazeLayout, gho
     camera.rotation.x = controls.pitch;
 }
 
-function updateOrthographicMovement(deltaSeconds, controls, camera, mazeLayout, ghosts) {
+function updateOrthographicMovement(deltaSeconds, controls, camera, mazeLayout) {
     const movementVector = new THREE.Vector3();
 
     if (controls.forward) {
@@ -167,11 +227,11 @@ function updateOrthographicMovement(deltaSeconds, controls, camera, mazeLayout, 
         const nextX = camera.position.x + movementVector.x * movementStep;
         const nextZ = camera.position.z + movementVector.z * movementStep;
 
-        if (canMoveTo(mazeLayout, ghosts, nextX, camera.position.z)) {
+        if (canMoveTo(mazeLayout, nextX, camera.position.z)) {
             camera.position.x = nextX;
         }
 
-        if (canMoveTo(mazeLayout, ghosts, camera.position.x, nextZ)) {
+        if (canMoveTo(mazeLayout, camera.position.x, nextZ)) {
             camera.position.z = nextZ;
         }
     }
@@ -179,11 +239,151 @@ function updateOrthographicMovement(deltaSeconds, controls, camera, mazeLayout, 
     camera.position.y = playerSettings.playerEyeHeight;
 }
 
-export function updatePlayer({ deltaSeconds, controls, camera, mazeLayout, ghosts }) {
+export function createPlayer({ camera, mazeLayout, tileSize }) {
+    const controls = createControls();
+    const spawnCell = findSpawnCell(mazeLayout);
+
+    camera.position.set(
+        spawnCell.column * tileSize,
+        playerSettings.playerEyeHeight,
+        spawnCell.row * tileSize
+    );
+    camera.rotation.order = 'YXZ';
+
+    return { controls, spawnCell };
+}
+
+export function createGhosts({ scene, mazeLayout, mazeCenterX, mazeCenterZ, tileSize, wallHeight }) {
+    const ghostRadius = tileSize * ghostSettings.radiusRatio;
+    const ghostHeight = (wallHeight + 0.15) * 0.5;
+    const spacing = tileSize * ghostSettings.spacingUnits;
+    const ghostGeometry = new THREE.SphereGeometry(ghostRadius, 32, 24);
+
+    const blueGhost = new THREE.Mesh(
+        ghostGeometry,
+        new THREE.MeshStandardMaterial({ color: 0x2563eb, roughness: 0.45, metalness: 0.05 })
+    );
+    blueGhost.userData.radius = ghostRadius;
+    blueGhost.userData.speed = ghostSettings.moveSpeed;
+    blueGhost.userData.direction = { row: 0, column: 1 };
+    blueGhost.userData.canTurn = true;
+    blueGhost.position.set(mazeCenterX - spacing, ghostHeight, mazeCenterZ);
+
+    const redGhost = new THREE.Mesh(
+        ghostGeometry,
+        new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.45, metalness: 0.05 })
+    );
+    redGhost.userData.radius = ghostRadius;
+    redGhost.userData.speed = ghostSettings.moveSpeed * 1.05;
+    redGhost.userData.direction = { row: 0, column: -1 };
+    redGhost.userData.canTurn = true;
+    redGhost.position.set(mazeCenterX + spacing, ghostHeight, mazeCenterZ);
+
+    const greenGhost = new THREE.Mesh(
+        ghostGeometry,
+        new THREE.MeshStandardMaterial({ color: 0x16a34a, roughness: 0.45, metalness: 0.05 })
+    );
+    greenGhost.userData.radius = ghostRadius;
+    greenGhost.userData.speed = ghostSettings.moveSpeed * 0.92;
+    greenGhost.userData.direction = { row: -1, column: 0 };
+    greenGhost.userData.canTurn = true;
+    greenGhost.position.set(mazeCenterX, ghostHeight, mazeCenterZ);
+
+    scene.add(blueGhost, redGhost, greenGhost);
+
+    for (const ghost of [blueGhost, redGhost, greenGhost]) {
+        if (!isNearCellCenter(ghost.position, tileSize)) {
+            ghost.userData.direction = pickGhostDirection(ghost, mazeLayout, tileSize);
+        }
+    }
+
+    return [blueGhost, redGhost, greenGhost];
+}
+
+export function updateGhosts({ deltaSeconds, ghosts, mazeLayout, tileSize }) {
+    for (const ghost of ghosts) {
+        tryMoveGhost(ghost, mazeLayout, tileSize, deltaSeconds);
+    }
+}
+
+export function playerIsTouchingGhosts({ playerX, playerZ, playerRadius, ghosts }) {
+    return collidesWithGhosts(ghosts, playerX, playerZ, playerRadius);
+}
+
+export function createCoins({ scene, mazeLayout, tileSize, excludedCells = [] }) {
+    const coinRadius = tileSize * coinSettings.radiusRatio;
+    const coinGeometry = new THREE.SphereGeometry(coinRadius, 16, 10);
+    const coinMaterial = new THREE.MeshBasicMaterial({ color: 0xfde68a });
+    const coinGroup = new THREE.Group();
+    const excludedCellSet = new Set(excludedCells.map(({ row, column }) => `${row},${column}`));
+    const coins = [];
+
+    for (let row = 1; row < mazeLayout.length - 1; row += 1) {
+        for (let column = 1; column < mazeLayout[row].length - 1; column += 1) {
+            if (mazeLayout[row][column] !== 0) {
+                continue;
+            }
+
+            if (excludedCellSet.has(`${row},${column}`)) {
+                continue;
+            }
+
+            const coin = new THREE.Mesh(coinGeometry, coinMaterial);
+            coin.position.set(column * tileSize, coinSettings.baseHeight, row * tileSize);
+            coin.userData.radius = coinRadius;
+            coin.userData.collected = false;
+            coin.userData.baseHeight = coinSettings.baseHeight;
+            coin.userData.floatOffset = Math.random() * Math.PI * 2;
+            coinGroup.add(coin);
+            coins.push(coin);
+        }
+    }
+
+    scene.add(coinGroup);
+
+    return { coinGroup, coins };
+}
+
+export function updateCoins({ elapsedSeconds, coins }) {
+    for (const coin of coins) {
+        if (coin.userData.collected) {
+            continue;
+        }
+
+        const baseHeight = coin.userData.baseHeight ?? coinSettings.baseHeight;
+        const floatOffset = coin.userData.floatOffset ?? 0;
+        coin.position.y = baseHeight + Math.sin(elapsedSeconds * coinSettings.floatSpeed + floatOffset) * coinSettings.floatAmplitude;
+    }
+}
+
+export function collectCoins({ playerX, playerZ, playerRadius, coins }) {
+    let collectedCount = 0;
+
+    for (const coin of coins) {
+        if (coin.userData.collected) {
+            continue;
+        }
+
+        const dx = playerX - coin.position.x;
+        const dz = playerZ - coin.position.z;
+        const coinRadius = coin.userData.radius ?? 0;
+        const collectionRadius = playerRadius + coinRadius;
+
+        if (dx * dx + dz * dz <= collectionRadius * collectionRadius) {
+            coin.userData.collected = true;
+            coin.visible = false;
+            collectedCount += 1;
+        }
+    }
+
+    return collectedCount;
+}
+
+export function updatePlayer({ deltaSeconds, controls, camera, mazeLayout }) {
     if (controls.view === 'orthographic') {
-        updateOrthographicMovement(deltaSeconds, controls, camera, mazeLayout, ghosts);
+        updateOrthographicMovement(deltaSeconds, controls, camera, mazeLayout);
         return;
     }
 
-    updatePerspectiveCamera(deltaSeconds, controls, camera, mazeLayout, ghosts);
+    updatePerspectiveCamera(deltaSeconds, controls, camera, mazeLayout);
 }

@@ -1,6 +1,16 @@
 import * as THREE from 'three';
 import { createMaze, getMazeData } from './maze.js';
-import { createGhosts, createPlayer, updatePlayer, playerSettings } from './characters.js';
+import {
+    collectCoins,
+    createCoins,
+    createGhosts,
+    createPlayer,
+    playerIsTouchingGhosts,
+    playerSettings,
+    updateCoins,
+    updateGhosts,
+    updatePlayer
+} from './characters.js';
 
 const appElement = document.getElementById('app');
 
@@ -13,6 +23,19 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 appElement.appendChild(renderer.domElement);
+
+const hudElement = document.createElement('div');
+hudElement.className = 'overlay';
+hudElement.innerHTML = `
+    <h1>Pacman 3D</h1>
+    <p id="hud-score">Pontos: 0</p>
+    <p id="hud-state">Colete as moedas e fuja dos fantasmas.</p>
+    <span class="hint">WASD move | Mouse olha | Espaço alterna vista | R reinicia</span>
+`;
+document.body.appendChild(hudElement);
+
+const scoreElement = hudElement.querySelector('#hud-score');
+const stateElement = hudElement.querySelector('#hud-state');
 
 const mazeRows = 23;
 const mazeColumns = 33;
@@ -65,8 +88,6 @@ const { mazeLayout, mazeGroup, floor, ceiling } = createMaze({
 
 const { mazeWidth, mazeHeight, mazeCenterX, mazeCenterZ } = getMazeData(mazeLayout, tileSize);
 
-const ghosts = createGhosts({ scene, mazeCenterX, mazeCenterZ, tileSize, wallHeight });
-
 const playerSpotlight = new THREE.Mesh(
     new THREE.CircleGeometry(0.18, 24),
     new THREE.MeshBasicMaterial({ color: 0xfacc15 })
@@ -90,10 +111,43 @@ const orthographicCamera = new THREE.OrthographicCamera(
 orthographicCamera.position.set(mazeCenterX, orthographicCameraHeight, mazeCenterZ);
 orthographicCamera.lookAt(mazeCenterX, 0, mazeCenterZ);
 
-const { controls } = createPlayer({ camera: perspectiveCamera, mazeLayout, tileSize });
+const { controls, spawnCell } = createPlayer({ camera: perspectiveCamera, mazeLayout, tileSize });
+
+const ghosts = createGhosts({ scene, mazeLayout, mazeCenterX, mazeCenterZ, tileSize, wallHeight });
+
+const ghostCells = ghosts.map((ghost) => ({
+    row: Math.round(ghost.position.z / tileSize),
+    column: Math.round(ghost.position.x / tileSize)
+}));
+
+const { coins } = createCoins({
+    scene,
+    mazeLayout,
+    tileSize,
+    excludedCells: [spawnCell, ...ghostCells]
+});
+
+let collectedCoinsCount = 0;
+let gameState = 'playing';
 
 let activeCamera = perspectiveCamera;
 let activeView = 'perspective';
+
+function setHudState(message) {
+    stateElement.textContent = message;
+}
+
+function setScore(value) {
+    scoreElement.textContent = `Pontos: ${value}`;
+}
+
+function endGame(message) {
+    gameState = 'finished';
+    setHudState(message);
+}
+
+setScore(collectedCoinsCount);
+setHudState('Colete as moedas e fuja dos fantasmas.');
 
 function activatePerspectiveView() {
     activeCamera = perspectiveCamera;
@@ -129,6 +183,11 @@ function toggleCamera() {
 }
 
 window.addEventListener('keydown', (event) => {
+    if (event.code === 'KeyR') {
+        window.location.reload();
+        return;
+    }
+
     switch (event.code) {
         case 'KeyW':
             controls.forward = true;
@@ -230,14 +289,55 @@ const clock = new THREE.Clock();
 function animate() {
     const deltaSeconds = clock.getDelta();
 
-    updatePlayer({
-        deltaSeconds,
-        controls,
-        camera: perspectiveCamera,
-        mazeLayout,
-        tileSize,
-        ghosts
-    });
+    if (gameState === 'playing') {
+        updateCoins({
+            elapsedSeconds: clock.elapsedTime,
+            coins
+        });
+
+        updatePlayer({
+            deltaSeconds,
+            controls,
+            camera: perspectiveCamera,
+            mazeLayout,
+            tileSize,
+            ghosts
+        });
+
+        updateGhosts({
+            deltaSeconds,
+            ghosts,
+            mazeLayout,
+            tileSize
+        });
+
+        const playerCaught = playerIsTouchingGhosts({
+            playerX: perspectiveCamera.position.x,
+            playerZ: perspectiveCamera.position.z,
+            playerRadius: playerSettings.playerRadius,
+            ghosts
+        });
+
+        if (playerCaught) {
+            endGame('Game over. Um fantasma apanhou o jogador. Pressiona R para reiniciar.');
+        } else {
+            const newlyCollected = collectCoins({
+                playerX: perspectiveCamera.position.x,
+                playerZ: perspectiveCamera.position.z,
+                playerRadius: playerSettings.playerRadius,
+                coins
+            });
+
+            if (newlyCollected > 0) {
+                collectedCoinsCount += newlyCollected;
+                setScore(collectedCoinsCount);
+            }
+
+            if (collectedCoinsCount >= coins.length) {
+                endGame('Venceste. Todas as moedas foram apanhadas. Pressiona R para reiniciar.');
+            }
+        }
+    }
 
     if (activeView === 'orthographic') {
         orthographicCamera.position.y = orthographicCameraHeight;
