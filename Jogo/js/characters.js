@@ -69,14 +69,18 @@ function oppositeDirection(direction) {
     };
 }
 
-function getAvailableDirections(mazeLayout, row, column) {
+function getAvailableDirections(mazeLayout, row, column, options = {}) {
     const directions = [];
+    const { blockCenterBox, centerMarkerCell } = options;
 
     for (const direction of cardinalDirections) {
         const nextRow = row + direction.row;
         const nextColumn = column + direction.column;
 
         if (isWalkableCell(mazeLayout, nextRow, nextColumn)) {
+            if (blockCenterBox && centerMarkerCell && isInsideCenterBox(nextRow, nextColumn, centerMarkerCell)) {
+                continue;
+            }
             directions.push(direction);
         }
     }
@@ -92,9 +96,13 @@ function isNearCellCenter(position, tileSize) {
     return Math.abs(position.x - cellX) <= threshold && Math.abs(position.z - cellZ) <= threshold;
 }
 
-function pickGhostDirection(ghost, mazeLayout, tileSize) {
+function isInsideCenterBox(row, column, centerMarkerCell) {
+    return Math.abs(row - centerMarkerCell.row) <= 1 && Math.abs(column - centerMarkerCell.column) <= 1;
+}
+
+function pickGhostDirection(ghost, mazeLayout, tileSize, options = {}) {
     const { row, column } = worldToCell(ghost.position.x, ghost.position.z, tileSize);
-    const availableDirections = getAvailableDirections(mazeLayout, row, column);
+    const availableDirections = getAvailableDirections(mazeLayout, row, column, options);
 
     if (availableDirections.length === 0) {
         return ghost.userData.direction ?? { row: 0, column: 0 };
@@ -107,16 +115,24 @@ function pickGhostDirection(ghost, mazeLayout, tileSize) {
     return candidates[Math.floor(Math.random() * candidates.length)];
 }
 
-function tryMoveGhost(ghost, mazeLayout, tileSize, deltaSeconds) {
+function tryMoveGhost(ghost, mazeLayout, tileSize, deltaSeconds, centerMarkerCell) {
     const currentDirection = ghost.userData.direction ?? { row: 0, column: 0 };
+    const blockCenterBox = ghost.userData.hasLeftBox ?? false;
 
     if (currentDirection.row === 0 && currentDirection.column === 0) {
-        ghost.userData.direction = pickGhostDirection(ghost, mazeLayout, tileSize);
+        ghost.userData.direction = pickGhostDirection(ghost, mazeLayout, tileSize, { blockCenterBox, centerMarkerCell });
+    }
+
+    if (centerMarkerCell) {
+        const { row, column } = worldToCell(ghost.position.x, ghost.position.z, tileSize);
+        if (!isInsideCenterBox(row, column, centerMarkerCell)) {
+            ghost.userData.hasLeftBox = true;
+        }
     }
 
     if (isNearCellCenter(ghost.position, tileSize)) {
         if (ghost.userData.canTurn ?? true) {
-            ghost.userData.direction = pickGhostDirection(ghost, mazeLayout, tileSize);
+            ghost.userData.direction = pickGhostDirection(ghost, mazeLayout, tileSize, { blockCenterBox, centerMarkerCell });
             ghost.userData.canTurn = false;
         }
     } else {
@@ -129,13 +145,16 @@ function tryMoveGhost(ghost, mazeLayout, tileSize, deltaSeconds) {
     const nextZ = ghost.position.z + ghost.userData.direction.row * step;
     const nextCell = worldToCell(nextX, nextZ, tileSize);
 
-    if (isWalkableCell(mazeLayout, nextCell.row, nextCell.column)) {
+    if (
+        isWalkableCell(mazeLayout, nextCell.row, nextCell.column)
+        && (!blockCenterBox || !centerMarkerCell || !isInsideCenterBox(nextCell.row, nextCell.column, centerMarkerCell))
+    ) {
         ghost.position.x = nextX;
         ghost.position.z = nextZ;
         return;
     }
 
-    ghost.userData.direction = pickGhostDirection(ghost, mazeLayout, tileSize);
+    ghost.userData.direction = pickGhostDirection(ghost, mazeLayout, tileSize, { blockCenterBox, centerMarkerCell });
 }
 
 function collidesWithGhosts(ghosts, nextX, nextZ, playerRadius) {
@@ -253,11 +272,30 @@ export function createPlayer({ camera, mazeLayout, tileSize }) {
     return { controls, spawnCell };
 }
 
-export function createGhosts({ scene, mazeLayout, mazeCenterX, mazeCenterZ, tileSize, wallHeight }) {
+export function createGhosts({ scene, mazeLayout, centerMarkerCell, tileSize, wallHeight }) {
+    const centerRow = Math.floor(mazeLayout.length / 2);
+    const centerColumn = Math.floor(mazeLayout[0].length / 2);
+    const centerCell = centerMarkerCell ?? { row: centerRow, column: centerColumn };
+    const centerX = centerCell.column * tileSize;
+    const centerZ = centerCell.row * tileSize;
     const ghostRadius = tileSize * ghostSettings.radiusRatio;
     const ghostHeight = (wallHeight + 0.15) * 0.5;
-    const spacing = tileSize * ghostSettings.spacingUnits;
     const ghostGeometry = new THREE.SphereGeometry(ghostRadius, 32, 24);
+
+    function resolveCellPosition(cell, fallbackX, fallbackZ) {
+        if (isInsideGrid(mazeLayout, cell.row, cell.column) && mazeLayout[cell.row][cell.column] === 0) {
+            return {
+                x: cell.column * tileSize,
+                z: cell.row * tileSize
+            };
+        }
+
+        return { x: fallbackX, z: fallbackZ };
+    }
+
+    const leftCell = { row: centerCell.row, column: centerCell.column - 1 };
+    const rightCell = { row: centerCell.row, column: centerCell.column + 1 };
+    const upCell = { row: centerCell.row - 2, column: centerCell.column };
 
     const blueGhost = new THREE.Mesh(
         ghostGeometry,
@@ -267,7 +305,8 @@ export function createGhosts({ scene, mazeLayout, mazeCenterX, mazeCenterZ, tile
     blueGhost.userData.speed = ghostSettings.moveSpeed;
     blueGhost.userData.direction = { row: 0, column: 1 };
     blueGhost.userData.canTurn = true;
-    blueGhost.position.set(mazeCenterX - spacing, ghostHeight, mazeCenterZ);
+    const bluePosition = resolveCellPosition(leftCell, centerX, centerZ);
+    blueGhost.position.set(bluePosition.x, ghostHeight, bluePosition.z);
 
     const redGhost = new THREE.Mesh(
         ghostGeometry,
@@ -277,7 +316,8 @@ export function createGhosts({ scene, mazeLayout, mazeCenterX, mazeCenterZ, tile
     redGhost.userData.speed = ghostSettings.moveSpeed * 1.05;
     redGhost.userData.direction = { row: 0, column: -1 };
     redGhost.userData.canTurn = true;
-    redGhost.position.set(mazeCenterX + spacing, ghostHeight, mazeCenterZ);
+    const redPosition = resolveCellPosition(rightCell, centerX, centerZ);
+    redGhost.position.set(redPosition.x, ghostHeight, redPosition.z);
 
     const greenGhost = new THREE.Mesh(
         ghostGeometry,
@@ -287,22 +327,34 @@ export function createGhosts({ scene, mazeLayout, mazeCenterX, mazeCenterZ, tile
     greenGhost.userData.speed = ghostSettings.moveSpeed * 0.92;
     greenGhost.userData.direction = { row: -1, column: 0 };
     greenGhost.userData.canTurn = true;
-    greenGhost.position.set(mazeCenterX, ghostHeight, mazeCenterZ);
+    const greenPosition = resolveCellPosition(centerCell, centerX, centerZ);
+    greenGhost.position.set(greenPosition.x, ghostHeight, greenPosition.z);
 
-    scene.add(blueGhost, redGhost, greenGhost);
+    const pinkGhost = new THREE.Mesh(
+        ghostGeometry,
+        new THREE.MeshStandardMaterial({ color: 0xec4899, roughness: 0.45, metalness: 0.05 })
+    );
+    pinkGhost.userData.radius = ghostRadius;
+    pinkGhost.userData.speed = ghostSettings.moveSpeed * 0.98;
+    pinkGhost.userData.direction = { row: 1, column: 0 };
+    pinkGhost.userData.canTurn = true;
+    const pinkPosition = resolveCellPosition(upCell, centerX, centerZ);
+    pinkGhost.position.set(pinkPosition.x, ghostHeight, pinkPosition.z);
 
-    for (const ghost of [blueGhost, redGhost, greenGhost]) {
+    scene.add(blueGhost, redGhost, greenGhost, pinkGhost);
+
+    for (const ghost of [blueGhost, redGhost, greenGhost, pinkGhost]) {
         if (!isNearCellCenter(ghost.position, tileSize)) {
-            ghost.userData.direction = pickGhostDirection(ghost, mazeLayout, tileSize);
+                ghost.userData.direction = pickGhostDirection(ghost, mazeLayout, tileSize, { blockCenterBox: false, centerMarkerCell });
         }
     }
 
-    return [blueGhost, redGhost, greenGhost];
+    return [blueGhost, redGhost, greenGhost, pinkGhost];
 }
 
-export function updateGhosts({ deltaSeconds, ghosts, mazeLayout, tileSize }) {
+export function updateGhosts({ deltaSeconds, ghosts, mazeLayout, tileSize, centerMarkerCell }) {
     for (const ghost of ghosts) {
-        tryMoveGhost(ghost, mazeLayout, tileSize, deltaSeconds);
+        tryMoveGhost(ghost, mazeLayout, tileSize, deltaSeconds, centerMarkerCell);
     }
 }
 
@@ -310,13 +362,23 @@ export function playerIsTouchingGhosts({ playerX, playerZ, playerRadius, ghosts 
     return collidesWithGhosts(ghosts, playerX, playerZ, playerRadius);
 }
 
-export function createCoins({ scene, mazeLayout, tileSize, excludedCells = [] }) {
+export function createCoins({
+    scene,
+    mazeLayout,
+    tileSize,
+    excludedCells = [],
+    centerMarkerCell = null,
+    exclusionRadius = 0
+}) {
     const coinRadius = tileSize * coinSettings.radiusRatio;
     const coinGeometry = new THREE.SphereGeometry(coinRadius, 16, 10);
     const coinMaterial = new THREE.MeshBasicMaterial({ color: 0xfde68a });
     const coinGroup = new THREE.Group();
     const excludedCellSet = new Set(excludedCells.map(({ row, column }) => `${row},${column}`));
+    const bannedRows = new Set([9, 10, 11, 12, 13]);
+    const bannedColumns = new Set([11, 12, 13, 14, 15, 16, 17]);
     const coins = [];
+    const radiusSquared = exclusionRadius * exclusionRadius;
 
     for (let row = 1; row < mazeLayout.length - 1; row += 1) {
         for (let column = 1; column < mazeLayout[row].length - 1; column += 1) {
@@ -325,6 +387,19 @@ export function createCoins({ scene, mazeLayout, tileSize, excludedCells = [] })
             }
 
             if (excludedCellSet.has(`${row},${column}`)) {
+                continue;
+            }
+
+            if (centerMarkerCell && exclusionRadius > 0) {
+                const dx = column - centerMarkerCell.column;
+                const dz = row - centerMarkerCell.row;
+
+                if (dx * dx + dz * dz <= radiusSquared) {
+                    continue;
+                }
+            }
+
+            if (bannedRows.has(row) && bannedColumns.has(column)) {
                 continue;
             }
 

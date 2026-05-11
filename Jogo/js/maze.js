@@ -7,6 +7,9 @@ const cardinalDirections = [
     { row: 0, column: 1 }
 ];
 
+let centerMarkerCell = null;
+let frontMarkerCell = null;
+
 function createFilledGrid(rows, columns, fillValue) {
     return Array.from({ length: rows }, () => Array.from({ length: columns }, () => fillValue));
 }
@@ -79,11 +82,11 @@ function createSymmetricMazeLayout(rows, columns) {
         '#.#.#.#####.#####.#####.#.#.#.#.#',
         '#.........#...#...#.........#...#',
         '###.#####.###.#.###.#####.###...#',
-        '#...#...#.....#.....#...#...#...#',
-        '#.###.#.###.#####.###.#.###.#.###',
-        '#.....#...............#.........#',
+        '#...#...#...........#...#...#...#',
+        '#.###.#.###.##P##.###.#.###.#.###',
+        '#.....#.....#.C.#.....#.........#',
         '#.###.#.###.#####.###.#.###.#...#',
-        '#...#...#.....#.....#...#...#...#',
+        '#...#...#...........#...#...#...#',
         '###.#####.###.#.###.#####.###.#.#',
         '#.........#...#...#.....#.....#.#',
         '#.#.#####.#.#####.#####.#.#####.#',
@@ -96,10 +99,35 @@ function createSymmetricMazeLayout(rows, columns) {
     ];
 
     if (rows !== blueprint.length || columns !== blueprint[0].length) {
+        centerMarkerCell = null;
+        frontMarkerCell = null;
         return createPacmanDarkDeceptionLayout(rows, columns);
     }
 
-    return blueprint.map((row) => Array.from(row, (cell) => (cell === '#' ? 1 : 0)));
+    centerMarkerCell = null;
+    frontMarkerCell = null;
+
+    return blueprint.map((row, rowIndex) => Array.from(row, (cell, columnIndex) => {
+        if (cell === 'C') {
+            centerMarkerCell = { row: rowIndex, column: columnIndex };
+            return 0;
+        }
+
+        if (cell === 'P') {
+            frontMarkerCell = { row: rowIndex, column: columnIndex };
+            return 0;
+        }
+
+        return cell === '#' ? 1 : 0;
+    }));
+}
+
+export function getCenterMarkerCell() {
+    return centerMarkerCell;
+}
+
+export function getFrontMarkerCell() {
+    return frontMarkerCell;
 }
 
 function isInsideGrid(layout, row, column) {
@@ -308,6 +336,31 @@ export function createMaze({
             wall.position.set(column * tileSize, wallHeight * 0.5, row * tileSize);
             mazeGroup.add(wall);
         }
+    }
+
+    if (frontMarkerCell) {
+        const faceThickness = tileSize * 0.08;
+        const faceGeometry = new THREE.BoxGeometry(tileSize, wallHeight, faceThickness);
+        const faceMaterial = new THREE.MeshBasicMaterial({
+            color: 0xffffff,
+            toneMapped: false,
+            side: THREE.DoubleSide,
+            polygonOffset: true,
+            polygonOffsetFactor: -1,
+            polygonOffsetUnits: -1,
+            depthTest: false
+        });
+        const faceWall = new THREE.Mesh(faceGeometry, faceMaterial);
+        faceWall.castShadow = true;
+        faceWall.receiveShadow = false;
+        faceWall.userData.isPanel = true;
+        faceWall.position.set(
+            frontMarkerCell.column * tileSize,
+            wallHeight * 0.5,
+            (frontMarkerCell.row - 0.5) * tileSize + tileSize * 0.01
+        );
+        faceWall.renderOrder = 1;
+        mazeGroup.add(faceWall);
     }
 
     return {

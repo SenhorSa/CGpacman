@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { createMaze, getMazeData } from './maze.js';
+import { createMaze, getCenterMarkerCell, getMazeData } from './maze.js';
 import {
     collectCoins,
     createCoins,
@@ -87,6 +87,7 @@ const { mazeLayout, mazeGroup, floor, ceiling } = createMaze({
 });
 
 const { mazeWidth, mazeHeight, mazeCenterX, mazeCenterZ } = getMazeData(mazeLayout, tileSize);
+const centerMarkerCell = getCenterMarkerCell();
 
 const playerSpotlight = new THREE.Mesh(
     new THREE.CircleGeometry(0.18, 24),
@@ -113,7 +114,7 @@ orthographicCamera.lookAt(mazeCenterX, 0, mazeCenterZ);
 
 const { controls, spawnCell } = createPlayer({ camera: perspectiveCamera, mazeLayout, tileSize });
 
-const ghosts = createGhosts({ scene, mazeLayout, mazeCenterX, mazeCenterZ, tileSize, wallHeight });
+const ghosts = createGhosts({ scene, mazeLayout, centerMarkerCell, tileSize, wallHeight });
 
 const ghostCells = ghosts.map((ghost) => ({
     row: Math.round(ghost.position.z / tileSize),
@@ -124,7 +125,9 @@ const { coins } = createCoins({
     scene,
     mazeLayout,
     tileSize,
-    excludedCells: [spawnCell, ...ghostCells]
+    excludedCells: [spawnCell, ...ghostCells],
+    centerMarkerCell,
+    exclusionRadius: 2
 });
 
 let collectedCoinsCount = 0;
@@ -157,6 +160,9 @@ function activatePerspectiveView() {
     ceiling.visible = true;
 
     for (const wall of mazeGroup.children) {
+        if (wall.userData?.isPanel) {
+            continue;
+        }
         wall.material = wallMaterialPerspective;
     }
 }
@@ -169,6 +175,9 @@ function activateOrthographicView() {
     ceiling.visible = false;
 
     for (const wall of mazeGroup.children) {
+        if (wall.userData?.isPanel) {
+            continue;
+        }
         wall.material = wallMaterialOrthographic;
     }
 }
@@ -308,7 +317,8 @@ function animate() {
             deltaSeconds,
             ghosts,
             mazeLayout,
-            tileSize
+            tileSize,
+            centerMarkerCell
         });
 
         const playerCaught = playerIsTouchingGhosts({
