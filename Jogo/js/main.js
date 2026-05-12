@@ -37,6 +37,142 @@ document.body.appendChild(hudElement);
 const scoreElement = hudElement.querySelector('#hud-score');
 const stateElement = hudElement.querySelector('#hud-state');
 
+const coinFlipSettings = {
+    intervalMs: 30000,
+    revealDelayMs: 500,
+    flipDurationMs: 1500,
+    resultHoldMs: 1500,
+    weightStep: 0.1,
+    minWeight: 0.01,
+    maxWeight: 0.99
+};
+
+let ghostMode = 'roam';
+let chaseWeight = 0.5;
+let coinRotation = 0;
+let flipAnimationId = null;
+let flipTimeoutId = null;
+
+const coinWrapper = document.createElement('div');
+coinWrapper.style.position = 'fixed';
+coinWrapper.style.top = '8px';
+coinWrapper.style.left = '50%';
+coinWrapper.style.transform = 'translateX(-50%)';
+coinWrapper.style.width = '52px';
+coinWrapper.style.height = '52px';
+coinWrapper.style.perspective = '600px';
+coinWrapper.style.zIndex = '10';
+coinWrapper.style.display = 'none';
+
+const coinInner = document.createElement('div');
+coinInner.style.width = '100%';
+coinInner.style.height = '100%';
+coinInner.style.position = 'relative';
+coinInner.style.transformStyle = 'preserve-3d';
+coinInner.style.transform = 'rotateY(0deg)';
+
+const coinFront = document.createElement('div');
+coinFront.textContent = 'P';
+coinFront.style.position = 'absolute';
+coinFront.style.inset = '0';
+coinFront.style.display = 'flex';
+coinFront.style.alignItems = 'center';
+coinFront.style.justifyContent = 'center';
+coinFront.style.background = '#f8fafc';
+coinFront.style.border = '2px solid #0f172a';
+coinFront.style.borderRadius = '50%';
+coinFront.style.color = '#0f172a';
+coinFront.style.fontWeight = '700';
+coinFront.style.fontSize = '20px';
+coinFront.style.backfaceVisibility = 'hidden';
+
+const coinBack = document.createElement('div');
+coinBack.textContent = 'V';
+coinBack.style.position = 'absolute';
+coinBack.style.inset = '0';
+coinBack.style.display = 'flex';
+coinBack.style.alignItems = 'center';
+coinBack.style.justifyContent = 'center';
+coinBack.style.background = '#f8fafc';
+coinBack.style.border = '2px solid #0f172a';
+coinBack.style.borderRadius = '50%';
+coinBack.style.color = '#0f172a';
+coinBack.style.fontWeight = '700';
+coinBack.style.fontSize = '20px';
+coinBack.style.transform = 'rotateY(180deg)';
+coinBack.style.backfaceVisibility = 'hidden';
+
+coinInner.appendChild(coinFront);
+coinInner.appendChild(coinBack);
+coinWrapper.appendChild(coinInner);
+document.body.appendChild(coinWrapper);
+
+function pickGhostMode() {
+    const roll = Math.random();
+    const nextMode = roll < chaseWeight ? 'chase' : 'roam';
+
+    if (nextMode === 'chase') {
+        chaseWeight = Math.max(coinFlipSettings.minWeight, chaseWeight - coinFlipSettings.weightStep);
+    } else {
+        chaseWeight = Math.min(coinFlipSettings.maxWeight, chaseWeight + coinFlipSettings.weightStep);
+    }
+
+    ghostMode = nextMode;
+    return nextMode;
+}
+
+function animateCoinFlip(targetDegrees) {
+    if (flipAnimationId) {
+        cancelAnimationFrame(flipAnimationId);
+    }
+
+    const startRotation = coinRotation;
+    const startTime = performance.now();
+    const duration = coinFlipSettings.flipDurationMs;
+
+    const animate = (time) => {
+        const progress = Math.min((time - startTime) / duration, 1);
+        const eased = 1 - Math.pow(1 - progress, 3);
+        const angle = startRotation + (targetDegrees - startRotation) * eased;
+        coinInner.style.transform = `rotateY(${angle}deg)`;
+
+        if (progress < 1) {
+            flipAnimationId = requestAnimationFrame(animate);
+            return;
+        }
+
+        coinRotation = targetDegrees % 360;
+        coinInner.style.transform = `rotateY(${coinRotation}deg)`;
+        setTimeout(() => {
+            coinWrapper.style.display = 'none';
+        }, coinFlipSettings.resultHoldMs);
+        flipAnimationId = null;
+    };
+
+    flipAnimationId = requestAnimationFrame(animate);
+}
+
+function startCoinFlipCycle() {
+    const nextMode = pickGhostMode();
+    const finalFace = nextMode === 'chase' ? 0 : 180;
+    const targetRotation = finalFace + 720;
+
+    coinWrapper.style.display = 'block';
+
+    if (flipTimeoutId) {
+        clearTimeout(flipTimeoutId);
+    }
+
+    flipTimeoutId = setTimeout(() => {
+        animateCoinFlip(targetRotation);
+    }, coinFlipSettings.revealDelayMs);
+}
+
+setTimeout(() => {
+    startCoinFlipCycle();
+    setInterval(startCoinFlipCycle, coinFlipSettings.intervalMs);
+}, coinFlipSettings.intervalMs);
+
 const mazeRows = 23;
 const mazeColumns = 33;
 const tileSize = 1;
@@ -318,7 +454,12 @@ function animate() {
             ghosts,
             mazeLayout,
             tileSize,
-            centerMarkerCell
+            centerMarkerCell,
+            mode: ghostMode,
+            targetCell: {
+                row: Math.round(perspectiveCamera.position.z / tileSize),
+                column: Math.round(perspectiveCamera.position.x / tileSize)
+            }
         });
 
         const playerCaught = playerIsTouchingGhosts({

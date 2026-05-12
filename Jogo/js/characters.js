@@ -108,19 +108,58 @@ function pickGhostDirection(ghost, mazeLayout, tileSize, options = {}) {
         return ghost.userData.direction ?? { row: 0, column: 0 };
     }
 
-    const reverseDirection = oppositeDirection(ghost.userData.direction ?? { row: 0, column: 0 });
-    const alternatives = availableDirections.filter((direction) => directionKey(direction) !== directionKey(reverseDirection));
-    const candidates = alternatives.length > 0 ? alternatives : availableDirections;
-
-    return candidates[Math.floor(Math.random() * candidates.length)];
+    return availableDirections[Math.floor(Math.random() * availableDirections.length)];
 }
 
-function tryMoveGhost(ghost, mazeLayout, tileSize, deltaSeconds, centerMarkerCell) {
+function pickChaseDirection(ghost, mazeLayout, tileSize, targetCell, options = {}) {
+    const { row, column } = worldToCell(ghost.position.x, ghost.position.z, tileSize);
+    const availableDirections = getAvailableDirections(mazeLayout, row, column, options);
+
+    if (availableDirections.length === 0) {
+        return ghost.userData.direction ?? { row: 0, column: 0 };
+    }
+
+    const reverseKey = directionKey(oppositeDirection(ghost.userData.direction ?? { row: 0, column: 0 }));
+    let bestAnyDirection = availableDirections[0];
+    let bestAnyScore = Number.POSITIVE_INFINITY;
+    let bestNonReverseDirection = null;
+    let bestNonReverseScore = Number.POSITIVE_INFINITY;
+
+    for (const direction of availableDirections) {
+        const nextRow = row + direction.row;
+        const nextColumn = column + direction.column;
+        const dx = targetCell.column - nextColumn;
+        const dz = targetCell.row - nextRow;
+        const distance = dx * dx + dz * dz;
+        const isReverse = directionKey(direction) === reverseKey;
+
+        if (distance < bestAnyScore) {
+            bestAnyScore = distance;
+            bestAnyDirection = direction;
+        }
+
+        if (!isReverse && distance < bestNonReverseScore) {
+            bestNonReverseScore = distance;
+            bestNonReverseDirection = direction;
+        }
+    }
+
+    if (bestNonReverseDirection) {
+        return bestNonReverseDirection;
+    }
+
+    return bestAnyDirection;
+}
+
+function tryMoveGhost(ghost, mazeLayout, tileSize, deltaSeconds, centerMarkerCell, mode, targetCell) {
     const currentDirection = ghost.userData.direction ?? { row: 0, column: 0 };
     const blockCenterBox = ghost.userData.hasLeftBox ?? false;
+    const directionOptions = { blockCenterBox, centerMarkerCell };
 
     if (currentDirection.row === 0 && currentDirection.column === 0) {
-        ghost.userData.direction = pickGhostDirection(ghost, mazeLayout, tileSize, { blockCenterBox, centerMarkerCell });
+        ghost.userData.direction = mode === 'chase'
+            ? pickChaseDirection(ghost, mazeLayout, tileSize, targetCell, directionOptions)
+            : pickGhostDirection(ghost, mazeLayout, tileSize, directionOptions);
     }
 
     if (centerMarkerCell) {
@@ -132,7 +171,9 @@ function tryMoveGhost(ghost, mazeLayout, tileSize, deltaSeconds, centerMarkerCel
 
     if (isNearCellCenter(ghost.position, tileSize)) {
         if (ghost.userData.canTurn ?? true) {
-            ghost.userData.direction = pickGhostDirection(ghost, mazeLayout, tileSize, { blockCenterBox, centerMarkerCell });
+            ghost.userData.direction = mode === 'chase'
+                ? pickChaseDirection(ghost, mazeLayout, tileSize, targetCell, directionOptions)
+                : pickGhostDirection(ghost, mazeLayout, tileSize, directionOptions);
             ghost.userData.canTurn = false;
         }
     } else {
@@ -154,7 +195,9 @@ function tryMoveGhost(ghost, mazeLayout, tileSize, deltaSeconds, centerMarkerCel
         return;
     }
 
-    ghost.userData.direction = pickGhostDirection(ghost, mazeLayout, tileSize, { blockCenterBox, centerMarkerCell });
+    ghost.userData.direction = mode === 'chase'
+        ? pickChaseDirection(ghost, mazeLayout, tileSize, targetCell, directionOptions)
+        : pickGhostDirection(ghost, mazeLayout, tileSize, directionOptions);
 }
 
 function collidesWithGhosts(ghosts, nextX, nextZ, playerRadius) {
@@ -352,9 +395,9 @@ export function createGhosts({ scene, mazeLayout, centerMarkerCell, tileSize, wa
     return [blueGhost, redGhost, greenGhost, pinkGhost];
 }
 
-export function updateGhosts({ deltaSeconds, ghosts, mazeLayout, tileSize, centerMarkerCell }) {
+export function updateGhosts({ deltaSeconds, ghosts, mazeLayout, tileSize, centerMarkerCell, mode, targetCell }) {
     for (const ghost of ghosts) {
-        tryMoveGhost(ghost, mazeLayout, tileSize, deltaSeconds, centerMarkerCell);
+        tryMoveGhost(ghost, mazeLayout, tileSize, deltaSeconds, centerMarkerCell, mode, targetCell);
     }
 }
 
