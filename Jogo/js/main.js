@@ -4,6 +4,8 @@ import {
     collectCoins,
     createCoins,
     createGhosts,
+    createGhosts2D,
+    createPacmanModels,
     createPlayer,
     playerIsTouchingGhosts,
     playerSettings,
@@ -254,6 +256,16 @@ const { controls, spawnCell } = createPlayer({ camera: perspectiveCamera, mazeLa
 
 const ghosts = createGhosts({ scene, mazeLayout, centerMarkerCell, tileSize, wallHeight });
 
+const ghost2DGroup = new THREE.Group();
+scene.add(ghost2DGroup);
+const ghost2DModels = createGhosts2D({ ghosts, tileSize });
+for (const ghost2D of ghost2DModels) {
+    ghost2DGroup.add(ghost2D);
+}
+
+const { pacman3D, pacman2D } = createPacmanModels({ tileSize });
+scene.add(pacman3D, pacman2D);
+
 const ghostCells = ghosts.map((ghost) => ({
     row: Math.round(ghost.position.z / tileSize),
     column: Math.round(ghost.position.x / tileSize)
@@ -297,6 +309,17 @@ function activatePerspectiveView() {
     floor.material = floorMaterialPerspective;
     ceiling.visible = true;
 
+    for (const ghost of ghosts) {
+        ghost.visible = true;
+    }
+
+    for (const ghost2D of ghost2DModels) {
+        ghost2D.visible = false;
+    }
+
+    pacman2D.visible = false;
+    pacman3D.visible = true;
+
     for (const wall of mazeGroup.children) {
         if (wall.userData?.isPanel) {
             continue;
@@ -311,6 +334,17 @@ function activateOrthographicView() {
     controls.view = 'orthographic';
     floor.material = floorMaterialOrthographic;
     ceiling.visible = false;
+
+    for (const ghost of ghosts) {
+        ghost.visible = false;
+    }
+
+    for (const ghost2D of ghost2DModels) {
+        ghost2D.visible = true;
+    }
+
+    pacman2D.visible = true;
+    pacman3D.visible = false;
 
     for (const wall of mazeGroup.children) {
         if (wall.userData?.isPanel) {
@@ -464,6 +498,14 @@ function animate() {
             }
         });
 
+        for (let index = 0; index < ghosts.length; index += 1) {
+            const ghost = ghosts[index];
+            const ghost2D = ghost2DModels[index];
+            ghost2D.position.x = ghost.position.x;
+            ghost2D.position.z = ghost.position.z;
+            ghost2D.position.y = tileSize * 0.02;
+        }
+
         const playerCaught = playerIsTouchingGhosts({
             playerX: perspectiveCamera.position.x,
             playerZ: perspectiveCamera.position.z,
@@ -499,6 +541,13 @@ function animate() {
 
     playerSpotlight.position.x = perspectiveCamera.position.x;
     playerSpotlight.position.z = perspectiveCamera.position.z;
+
+    pacman3D.position.x = perspectiveCamera.position.x;
+    pacman3D.position.z = perspectiveCamera.position.z;
+    pacman3D.position.y = pacman3D.userData.baseY ?? playerSettings.playerEyeHeight;
+    pacman2D.position.x = perspectiveCamera.position.x;
+    pacman2D.position.z = perspectiveCamera.position.z;
+    pacman2D.position.y = pacman2D.userData.baseY ?? tileSize * 0.06;
 
     renderer.render(scene, activeCamera);
     requestAnimationFrame(animate);

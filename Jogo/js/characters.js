@@ -22,6 +22,13 @@ export const coinSettings = {
     floatSpeed: 2.4
 };
 
+const ghostColors = {
+    blue: 0x05a4fa,
+    red: 0xdc2626,
+    orange: 0xff5e00,
+    pink: 0xec4899
+};
+
 const cardinalDirections = [
     { row: -1, column: 0 },
     { row: 1, column: 0 },
@@ -254,6 +261,161 @@ function canMoveTo(mazeLayout, nextX, nextZ) {
     return isWalkableAt(mazeLayout, nextX, nextZ, playerSettings.playerRadius);
 }
 
+function buildGhost3D(color, tileSize) {
+    const group = new THREE.Group();
+    const radius = tileSize * ghostSettings.radiusRatio;
+    const bodyMaterial = new THREE.MeshStandardMaterial({
+        color,
+        roughness: 0.4,
+        metalness: 0.02,
+        side: THREE.DoubleSide
+    });
+
+    const profile = [];
+    const shoulderY = radius * 1.1;
+    const domeSegments = 12;
+
+    profile.push(new THREE.Vector2(0, -radius * 0.2));
+
+    for (let i = 0; i <= domeSegments; i += 1) {
+        const theta = (i / domeSegments) * (Math.PI / 2);
+        const x = radius * Math.sin(theta);
+        const y = shoulderY + radius * Math.cos(theta);
+        profile.push(new THREE.Vector2(x, y));
+    }
+
+    profile.push(new THREE.Vector2(radius * 1.05, radius * 0.35));
+    profile.push(new THREE.Vector2(radius * 1.1, radius * 0.12));
+    profile.push(new THREE.Vector2(radius * 1.15, -radius * 0.2));
+    profile.push(new THREE.Vector2(0, -radius * 0.2));
+
+    const body = new THREE.Mesh(new THREE.LatheGeometry(profile, 32), bodyMaterial);
+    body.position.y = -radius * 0.08;
+
+    const skirtHeight = radius * 0.8;
+    const skirtGeometry = new THREE.CylinderGeometry(radius * 1.02, radius * 0.95, skirtHeight, 48, 2, true);
+    const skirt = new THREE.Mesh(skirtGeometry, bodyMaterial);
+    skirt.position.y = -radius * 0.38;
+
+    const skirtPositions = skirtGeometry.attributes.position;
+    const waveCount = 10;
+    const waveAmplitude = radius * 0.04;
+
+    for (let i = 0; i < skirtPositions.count; i += 1) {
+        const x = skirtPositions.getX(i);
+        const y = skirtPositions.getY(i);
+        const z = skirtPositions.getZ(i);
+        const angle = Math.atan2(z, x);
+        const wave = Math.sin(angle * waveCount) * waveAmplitude;
+
+        if (y < 0) {
+            skirtPositions.setY(i, y - wave);
+            skirtPositions.setX(i, x * 0.98);
+            skirtPositions.setZ(i, z * 0.98);
+        }
+    }
+
+    skirtPositions.needsUpdate = true;
+    skirtGeometry.computeVertexNormals();
+
+
+    const eyeWhiteMaterial = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        side: THREE.DoubleSide,
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+        polygonOffsetUnits: -1
+    });
+    const eyePupilMaterial = new THREE.MeshBasicMaterial({
+        color: 0x0f172a,
+        side: THREE.DoubleSide,
+        polygonOffset: true,
+        polygonOffsetFactor: -2,
+        polygonOffsetUnits: -2
+    });
+    const eyeGeometry = new THREE.CircleGeometry(radius * 0.28, 20);
+    const pupilGeometry = new THREE.CircleGeometry(radius * 0.12, 16);
+
+    const leftEye = new THREE.Mesh(eyeGeometry, eyeWhiteMaterial);
+    const rightEye = new THREE.Mesh(eyeGeometry, eyeWhiteMaterial);
+    const leftPupil = new THREE.Mesh(pupilGeometry, eyePupilMaterial);
+    const rightPupil = new THREE.Mesh(pupilGeometry, eyePupilMaterial);
+
+    leftEye.position.set(-radius * 0.32, radius * 0.90, radius * 1.02);
+    rightEye.position.set(radius * 0.32, radius * 0.90, radius * 1.02);
+    leftPupil.position.set(-radius * 0.32, radius * 0.90, radius * 1.11);
+    rightPupil.position.set(radius * 0.32, radius * 0.90, radius * 1.11);
+
+    group.add(body, skirt, leftEye, rightEye, leftPupil, rightPupil);
+    group.scale.y = 1.25;
+    return group;
+}
+
+function buildGhost2D(color, tileSize) {
+    const group = new THREE.Group();
+    const radius = tileSize * ghostSettings.radiusRatio;
+    const material = new THREE.MeshBasicMaterial({ color });
+    const head = new THREE.Mesh(new THREE.CircleGeometry(radius, 18), material);
+    head.position.y = radius * 0.4;
+
+    const body = new THREE.Mesh(new THREE.PlaneGeometry(radius * 2, radius * 1.1), material);
+    body.position.y = -radius * 0.25;
+
+    const eyeWhiteMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const pupilMaterial = new THREE.MeshBasicMaterial({ color: 0x0f172a });
+    const eye = new THREE.Mesh(new THREE.CircleGeometry(radius * 0.18, 12), eyeWhiteMaterial);
+    const eye2 = new THREE.Mesh(new THREE.CircleGeometry(radius * 0.18, 12), eyeWhiteMaterial);
+    eye.position.set(-radius * 0.25, radius * 0.35, 0.01);
+    eye2.position.set(radius * 0.25, radius * 0.35, 0.01);
+
+    const pupil = new THREE.Mesh(new THREE.CircleGeometry(radius * 0.07, 10), pupilMaterial);
+    const pupil2 = new THREE.Mesh(new THREE.CircleGeometry(radius * 0.07, 10), pupilMaterial);
+    pupil.position.set(-radius * 0.25, radius * 0.3, 0.02);
+    pupil2.position.set(radius * 0.25, radius * 0.3, 0.02);
+
+    group.add(head, body, eye, eye2, pupil, pupil2);
+    group.rotation.x = -Math.PI / 2;
+    return group;
+}
+
+export function createPacmanModels({ tileSize }) {
+    const group3d = new THREE.Group();
+    const radius = tileSize * 0.24;
+    const mouthAngle = Math.PI / 3;
+    const bodyGeometry = new THREE.SphereGeometry(
+        radius,
+        24,
+        18,
+        mouthAngle * 0.5,
+        Math.PI * 2 - mouthAngle,
+        0,
+        Math.PI
+    );
+    const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.35, metalness: 0.0 });
+    const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+    body.rotation.y = Math.PI / 2;
+
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(radius * 0.08, 10, 8), new THREE.MeshStandardMaterial({ color: 0x0f172a }));
+    eye.position.set(0, radius * 0.45, radius * 0.25);
+
+    group3d.add(body, eye);
+    group3d.userData.baseY = tileSize * 0.22;
+
+    const group2d = new THREE.Group();
+    const pacman2d = new THREE.Mesh(
+        new THREE.CircleGeometry(radius * 1.1, 24, mouthAngle * 0.5, Math.PI * 2 - mouthAngle),
+        new THREE.MeshBasicMaterial({ color: 0xfacc15 })
+    );
+    const eye2d = new THREE.Mesh(new THREE.CircleGeometry(radius * 0.09, 10), new THREE.MeshBasicMaterial({ color: 0x0f172a }));
+    eye2d.position.set(0, radius * 0.4, 0.02);
+
+    group2d.add(pacman2d, eye2d);
+    group2d.userData.baseY = tileSize * 0.06;
+    group2d.rotation.x = -Math.PI / 2;
+
+    return { pacman3D: group3d, pacman2D: group2d };
+}
+
 function updatePerspectiveCamera(deltaSeconds, controls, camera, mazeLayout) {
     const forwardVector = new THREE.Vector3(-Math.sin(controls.yaw), 0, -Math.cos(controls.yaw));
     const rightVector = new THREE.Vector3(Math.cos(controls.yaw), 0, -Math.sin(controls.yaw));
@@ -353,8 +515,7 @@ export function createGhosts({ scene, mazeLayout, centerMarkerCell, tileSize, wa
     const centerX = centerCell.column * tileSize;
     const centerZ = centerCell.row * tileSize;
     const ghostRadius = tileSize * ghostSettings.radiusRatio;
-    const ghostHeight = (wallHeight + 0.15) * 0.5;
-    const ghostGeometry = new THREE.SphereGeometry(ghostRadius, 32, 24);
+    const ghostHeight = (wallHeight + 0.15) * 0.3 + tileSize * 0.08;
 
     function resolveCellPosition(cell, fallbackX, fallbackZ) {
         if (isInsideGrid(mazeLayout, cell.row, cell.column) && mazeLayout[cell.row][cell.column] === 0) {
@@ -371,47 +532,39 @@ export function createGhosts({ scene, mazeLayout, centerMarkerCell, tileSize, wa
     const rightCell = { row: centerCell.row, column: centerCell.column + 1 };
     const upCell = { row: centerCell.row - 2, column: centerCell.column };
 
-    const blueGhost = new THREE.Mesh(
-        ghostGeometry,
-        new THREE.MeshStandardMaterial({ color: 0x2563eb, roughness: 0.45, metalness: 0.05 })
-    );
+    const blueGhost = buildGhost3D(ghostColors.blue, tileSize);
     blueGhost.userData.radius = ghostRadius;
     blueGhost.userData.speed = ghostSettings.moveSpeed;
     blueGhost.userData.direction = { row: 0, column: 1 };
     blueGhost.userData.canTurn = true;
+    blueGhost.userData.color = ghostColors.blue;
     const bluePosition = resolveCellPosition(leftCell, centerX, centerZ);
     blueGhost.position.set(bluePosition.x, ghostHeight, bluePosition.z);
 
-    const redGhost = new THREE.Mesh(
-        ghostGeometry,
-        new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.45, metalness: 0.05 })
-    );
+    const redGhost = buildGhost3D(ghostColors.red, tileSize);
     redGhost.userData.radius = ghostRadius;
     redGhost.userData.speed = ghostSettings.moveSpeed * 1.05;
     redGhost.userData.direction = { row: 0, column: -1 };
     redGhost.userData.canTurn = true;
+    redGhost.userData.color = ghostColors.red;
     const redPosition = resolveCellPosition(rightCell, centerX, centerZ);
     redGhost.position.set(redPosition.x, ghostHeight, redPosition.z);
 
-    const orangeGhost = new THREE.Mesh(
-        ghostGeometry,
-        new THREE.MeshStandardMaterial({ color: 0xff5e00, roughness: 0.45, metalness: 0.05 })
-    );
+    const orangeGhost = buildGhost3D(ghostColors.orange, tileSize);
     orangeGhost.userData.radius = ghostRadius;
     orangeGhost.userData.speed = ghostSettings.moveSpeed * 0.92;
     orangeGhost.userData.direction = { row: -1, column: 0 };
     orangeGhost.userData.canTurn = true;
+    orangeGhost.userData.color = ghostColors.orange;
     const orangePosition = resolveCellPosition(centerCell, centerX, centerZ);
     orangeGhost.position.set(orangePosition.x, ghostHeight, orangePosition.z);
 
-    const pinkGhost = new THREE.Mesh(
-        ghostGeometry,
-        new THREE.MeshStandardMaterial({ color: 0xec4899, roughness: 0.45, metalness: 0.05 })
-    );
+    const pinkGhost = buildGhost3D(ghostColors.pink, tileSize);
     pinkGhost.userData.radius = ghostRadius;
     pinkGhost.userData.speed = ghostSettings.moveSpeed * 0.98;
     pinkGhost.userData.direction = { row: 1, column: 0 };
     pinkGhost.userData.canTurn = true;
+    pinkGhost.userData.color = ghostColors.pink;
     const pinkPosition = resolveCellPosition(upCell, centerX, centerZ);
     pinkGhost.position.set(pinkPosition.x, ghostHeight, pinkPosition.z);
 
@@ -424,6 +577,13 @@ export function createGhosts({ scene, mazeLayout, centerMarkerCell, tileSize, wa
     }
 
     return [blueGhost, redGhost, orangeGhost, pinkGhost];
+}
+
+export function createGhosts2D({ ghosts, tileSize }) {
+    return ghosts.map((ghost) => {
+        const color = ghost.userData.color ?? ghostColors.blue;
+        return buildGhost2D(color, tileSize);
+    });
 }
 
 export function updateGhosts({ deltaSeconds, ghosts, mazeLayout, tileSize, centerMarkerCell, mode, targetCell }) {
