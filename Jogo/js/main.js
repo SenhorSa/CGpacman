@@ -111,7 +111,9 @@ function pickGhostMode() {
     const roll = Math.random();
     const nextMode = roll < chaseWeight ? 'chase' : 'roam';
 
-    if (nextMode === 'chase') {
+    if (nextMode !== ghostMode) {
+        chaseWeight = 0.5;
+    } else if (nextMode === 'chase') {
         chaseWeight = Math.max(coinFlipSettings.minWeight, chaseWeight - coinFlipSettings.weightStep);
     } else {
         chaseWeight = Math.min(coinFlipSettings.maxWeight, chaseWeight + coinFlipSettings.weightStep);

@@ -71,13 +71,22 @@ function oppositeDirection(direction) {
 
 function getAvailableDirections(mazeLayout, row, column, options = {}) {
     const directions = [];
-    const { blockCenterBox, centerMarkerCell } = options;
+    const {
+        blockCenterBox,
+        centerMarkerCell,
+        ghostRadius,
+        tileSize
+    } = options;
 
     for (const direction of cardinalDirections) {
         const nextRow = row + direction.row;
         const nextColumn = column + direction.column;
 
-        if (isWalkableCell(mazeLayout, nextRow, nextColumn)) {
+        const isWalkable = ghostRadius && tileSize
+            ? isWalkableAt(mazeLayout, nextColumn * tileSize, nextRow * tileSize, ghostRadius)
+            : isWalkableCell(mazeLayout, nextRow, nextColumn);
+
+        if (isWalkable) {
             if (blockCenterBox && centerMarkerCell && isInsideCenterBox(nextRow, nextColumn, centerMarkerCell)) {
                 continue;
             }
@@ -102,7 +111,11 @@ function isInsideCenterBox(row, column, centerMarkerCell) {
 
 function pickGhostDirection(ghost, mazeLayout, tileSize, options = {}) {
     const { row, column } = worldToCell(ghost.position.x, ghost.position.z, tileSize);
-    const availableDirections = getAvailableDirections(mazeLayout, row, column, options);
+    const availableDirections = getAvailableDirections(mazeLayout, row, column, {
+        ...options,
+        ghostRadius: ghost.userData.radius,
+        tileSize
+    });
 
     if (availableDirections.length === 0) {
         return ghost.userData.direction ?? { row: 0, column: 0 };
@@ -113,7 +126,11 @@ function pickGhostDirection(ghost, mazeLayout, tileSize, options = {}) {
 
 function pickChaseDirection(ghost, mazeLayout, tileSize, targetCell, options = {}) {
     const { row, column } = worldToCell(ghost.position.x, ghost.position.z, tileSize);
-    const availableDirections = getAvailableDirections(mazeLayout, row, column, options);
+    const availableDirections = getAvailableDirections(mazeLayout, row, column, {
+        ...options,
+        ghostRadius: ghost.userData.radius,
+        tileSize
+    });
 
     if (availableDirections.length === 0) {
         return ghost.userData.direction ?? { row: 0, column: 0 };
@@ -154,7 +171,12 @@ function pickChaseDirection(ghost, mazeLayout, tileSize, targetCell, options = {
 function tryMoveGhost(ghost, mazeLayout, tileSize, deltaSeconds, centerMarkerCell, mode, targetCell) {
     const currentDirection = ghost.userData.direction ?? { row: 0, column: 0 };
     const blockCenterBox = ghost.userData.hasLeftBox ?? false;
-    const directionOptions = { blockCenterBox, centerMarkerCell };
+    const directionOptions = {
+        blockCenterBox,
+        centerMarkerCell,
+        ghostRadius: ghost.userData.radius,
+        tileSize
+    };
 
     if (currentDirection.row === 0 && currentDirection.column === 0) {
         ghost.userData.direction = mode === 'chase'
@@ -185,13 +207,19 @@ function tryMoveGhost(ghost, mazeLayout, tileSize, deltaSeconds, centerMarkerCel
     const nextX = ghost.position.x + ghost.userData.direction.column * step;
     const nextZ = ghost.position.z + ghost.userData.direction.row * step;
     const nextCell = worldToCell(nextX, nextZ, tileSize);
+    const ghostRadius = ghost.userData.radius ?? 0;
+    const canMove = isWalkableAt(mazeLayout, nextX, nextZ, ghostRadius)
+        && (!blockCenterBox || !centerMarkerCell || !isInsideCenterBox(nextCell.row, nextCell.column, centerMarkerCell));
 
-    if (
-        isWalkableCell(mazeLayout, nextCell.row, nextCell.column)
-        && (!blockCenterBox || !centerMarkerCell || !isInsideCenterBox(nextCell.row, nextCell.column, centerMarkerCell))
-    ) {
+    if (canMove) {
         ghost.position.x = nextX;
         ghost.position.z = nextZ;
+
+        if (ghost.userData.direction.row !== 0) {
+            ghost.position.x = Math.round(ghost.position.x / tileSize) * tileSize;
+        } else if (ghost.userData.direction.column !== 0) {
+            ghost.position.z = Math.round(ghost.position.z / tileSize) * tileSize;
+        }
         return;
     }
 
