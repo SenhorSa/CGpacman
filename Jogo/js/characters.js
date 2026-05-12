@@ -11,7 +11,8 @@ export const playerSettings = {
 export const ghostSettings = {
     radiusRatio: 0.22,
     spacingUnits: 2,
-    moveSpeed: 1.15
+    moveSpeed: 1.15,
+    collisionPadding: 0.03
 };
 
 export const coinSettings = {
@@ -77,13 +78,14 @@ function getAvailableDirections(mazeLayout, row, column, options = {}) {
         ghostRadius,
         tileSize
     } = options;
+    const effectiveRadius = ghostRadius ? ghostRadius + ghostSettings.collisionPadding : ghostRadius;
 
     for (const direction of cardinalDirections) {
         const nextRow = row + direction.row;
         const nextColumn = column + direction.column;
 
-        const isWalkable = ghostRadius && tileSize
-            ? isWalkableAt(mazeLayout, nextColumn * tileSize, nextRow * tileSize, ghostRadius)
+        const isWalkable = effectiveRadius && tileSize
+            ? isWalkableAt(mazeLayout, nextColumn * tileSize, nextRow * tileSize, effectiveRadius)
             : isWalkableCell(mazeLayout, nextRow, nextColumn);
 
         if (isWalkable) {
@@ -208,7 +210,8 @@ function tryMoveGhost(ghost, mazeLayout, tileSize, deltaSeconds, centerMarkerCel
     const nextZ = ghost.position.z + ghost.userData.direction.row * step;
     const nextCell = worldToCell(nextX, nextZ, tileSize);
     const ghostRadius = ghost.userData.radius ?? 0;
-    const canMove = isWalkableAt(mazeLayout, nextX, nextZ, ghostRadius)
+    const effectiveRadius = ghostRadius + ghostSettings.collisionPadding;
+    const canMove = isWalkableAt(mazeLayout, nextX, nextZ, effectiveRadius)
         && (!blockCenterBox || !centerMarkerCell || !isInsideCenterBox(nextCell.row, nextCell.column, centerMarkerCell));
 
     if (canMove) {
@@ -390,16 +393,16 @@ export function createGhosts({ scene, mazeLayout, centerMarkerCell, tileSize, wa
     const redPosition = resolveCellPosition(rightCell, centerX, centerZ);
     redGhost.position.set(redPosition.x, ghostHeight, redPosition.z);
 
-    const greenGhost = new THREE.Mesh(
+    const orangeGhost = new THREE.Mesh(
         ghostGeometry,
-        new THREE.MeshStandardMaterial({ color: 0x16a34a, roughness: 0.45, metalness: 0.05 })
+        new THREE.MeshStandardMaterial({ color: 0xff5e00, roughness: 0.45, metalness: 0.05 })
     );
-    greenGhost.userData.radius = ghostRadius;
-    greenGhost.userData.speed = ghostSettings.moveSpeed * 0.92;
-    greenGhost.userData.direction = { row: -1, column: 0 };
-    greenGhost.userData.canTurn = true;
-    const greenPosition = resolveCellPosition(centerCell, centerX, centerZ);
-    greenGhost.position.set(greenPosition.x, ghostHeight, greenPosition.z);
+    orangeGhost.userData.radius = ghostRadius;
+    orangeGhost.userData.speed = ghostSettings.moveSpeed * 0.92;
+    orangeGhost.userData.direction = { row: -1, column: 0 };
+    orangeGhost.userData.canTurn = true;
+    const orangePosition = resolveCellPosition(centerCell, centerX, centerZ);
+    orangeGhost.position.set(orangePosition.x, ghostHeight, orangePosition.z);
 
     const pinkGhost = new THREE.Mesh(
         ghostGeometry,
@@ -412,15 +415,15 @@ export function createGhosts({ scene, mazeLayout, centerMarkerCell, tileSize, wa
     const pinkPosition = resolveCellPosition(upCell, centerX, centerZ);
     pinkGhost.position.set(pinkPosition.x, ghostHeight, pinkPosition.z);
 
-    scene.add(blueGhost, redGhost, greenGhost, pinkGhost);
+    scene.add(blueGhost, redGhost, orangeGhost, pinkGhost);
 
-    for (const ghost of [blueGhost, redGhost, greenGhost, pinkGhost]) {
+    for (const ghost of [blueGhost, redGhost, orangeGhost, pinkGhost]) {
         if (!isNearCellCenter(ghost.position, tileSize)) {
                 ghost.userData.direction = pickGhostDirection(ghost, mazeLayout, tileSize, { blockCenterBox: false, centerMarkerCell });
         }
     }
 
-    return [blueGhost, redGhost, greenGhost, pinkGhost];
+    return [blueGhost, redGhost, orangeGhost, pinkGhost];
 }
 
 export function updateGhosts({ deltaSeconds, ghosts, mazeLayout, tileSize, centerMarkerCell, mode, targetCell }) {
