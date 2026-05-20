@@ -225,6 +225,15 @@
             cursor: pointer;
             font-family: "Chakra Petch", "Segoe UI", sans-serif;
             z-index: 31;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .menu-back img {
+            width: 22px;
+            height: 22px;
+            display: block;
         }
 
         .menu-back.is-hidden {
@@ -304,7 +313,9 @@
 <body>
     <div id="app"></div>
     <div id="menu-root" class="menu-root">
-        <button id="menu-back" class="menu-back is-hidden" aria-label="Voltar">&lt;--</button>
+        <button id="menu-back" class="menu-back is-hidden" aria-label="Voltar">
+            <img src="./Imagens/Menu/go-back-arrow-icon.png" alt="" aria-hidden="true">
+        </button>
 
         <section class="menu-panel" data-view="main">
             <h1 class="menu-title">Pacman 3D</h1>
