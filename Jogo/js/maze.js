@@ -130,6 +130,10 @@ export function getFrontMarkerCell() {
     return frontMarkerCell;
 }
 
+export function createMenuMazeLayout(rows, columns) {
+    return createSymmetricMazeLayout(rows, columns);
+}
+
 function isInsideGrid(layout, row, column) {
     return row >= 0 && row < layout.length && column >= 0 && column < layout[0].length;
 }

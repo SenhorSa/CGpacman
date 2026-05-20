@@ -116,6 +116,17 @@
             transition: opacity 0.4s ease;
         }
 
+        .menu-maze-canvas {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            filter: blur(7px);
+            pointer-events: none;
+            z-index: 0;
+            mix-blend-mode: screen;
+        }
+
         .menu-root::before {
             content: "";
             position: absolute;
@@ -126,6 +137,7 @@
             background-size: 120px 120px;
             opacity: 0.35;
             pointer-events: none;
+            z-index: 1;
         }
 
         .menu-root::after {
@@ -139,6 +151,7 @@
             background: radial-gradient(circle, rgba(250, 204, 21, 0.24), transparent 70%);
             filter: blur(10px);
             pointer-events: none;
+            z-index: 1;
         }
 
         .menu-root.is-hidden {
@@ -158,6 +171,9 @@
             display: grid;
             gap: 18px;
             font-family: "Space Grotesk", "Segoe UI", sans-serif;
+            justify-items: center;
+            align-items: start;
+            z-index: 2;
         }
 
         .menu-panel.is-hidden {
@@ -170,6 +186,7 @@
             font-family: "Chakra Petch", "Segoe UI", sans-serif;
             letter-spacing: 0.06em;
             text-transform: uppercase;
+            text-align: center;
         }
 
         .menu-subtitle {
@@ -177,11 +194,14 @@
             color: var(--menu-subtle);
             line-height: 1.5;
             font-size: 0.98rem;
+            text-align: center;
         }
 
         .menu-actions {
             display: grid;
             gap: 12px;
+            width: 100%;
+            justify-items: center;
         }
 
         .menu-actions button,
@@ -193,9 +213,11 @@
             padding: 14px 18px;
             font-size: 1rem;
             font-family: "Space Grotesk", "Segoe UI", sans-serif;
-            text-align: left;
+            text-align: center;
             cursor: pointer;
             transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+            width: min(78%, 280px);
+            box-sizing: border-box;
         }
 
         .menu-actions button:hover,
@@ -252,6 +274,10 @@
             font-family: "Chakra Petch", "Segoe UI", sans-serif;
         }
 
+        .menu-panel[data-view="controls"] .menu-section h1 {
+            text-align: center;
+        }
+
         .menu-section p,
         .menu-section li {
             margin: 0;
@@ -264,6 +290,67 @@
             padding-left: 18px;
             display: grid;
             gap: 8px;
+        }
+
+        .controls-block {
+            display: grid;
+            gap: 16px;
+        }
+
+        .control-item {
+            display: grid;
+            justify-items: center;
+            gap: 8px;
+        }
+
+        .control-item p {
+            margin: 0;
+            color: var(--menu-subtle);
+            text-align: center;
+        }
+
+        .keypad {
+            display: grid;
+            grid-template-columns: repeat(3, 48px);
+            grid-template-rows: repeat(2, 48px);
+            gap: 8px;
+        }
+
+        .keycap {
+            display: grid;
+            place-items: center;
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            border: 2px solid #e7e9f4;
+            background: #1b1f27;
+            color: #e7e9f4;
+            font-weight: 600;
+            font-family: "Chakra Petch", "Segoe UI", sans-serif;
+            letter-spacing: 0.04em;
+            box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.35);
+        }
+
+        .keycap--ghost {
+            visibility: hidden;
+        }
+
+        .keycap--wide {
+            width: 168px;
+            height: 46px;
+            border-radius: 14px;
+        }
+
+        .key-row {
+            display: grid;
+            place-items: center;
+        }
+
+        .mouse-icon {
+            width: 64px;
+            height: 64px;
+            object-fit: contain;
+            display: block;
         }
 
         .menu-slider {
@@ -313,6 +400,8 @@
 <body>
     <div id="app"></div>
     <div id="menu-root" class="menu-root">
+        <canvas id="menu-maze-canvas-a" class="menu-maze-canvas" aria-hidden="true"></canvas>
+        <canvas id="menu-maze-canvas-b" class="menu-maze-canvas" aria-hidden="true"></canvas>
         <button id="menu-back" class="menu-back is-hidden" aria-label="Voltar">
             <img src="./Imagens/Menu/go-back-arrow-icon.png" alt="" aria-hidden="true">
         </button>
@@ -338,13 +427,36 @@
 
         <section class="menu-panel is-hidden" data-view="controls">
             <div class="menu-section">
-                <h2>Controlos</h2>
-                <ul>
-                    <li>W A S D para mover o jogador.</li>
-                    <li>Mouse para olhar em redor (vista 3D).</li>
-                    <li>Espaco para alternar a vista.</li>
-                    <li>R para reiniciar a partida.</li>
-                </ul>
+                <h1>Controlos</h1>
+                <div class="controls-block">
+                    <div class="control-item">
+                        <div class="keypad">
+                            <span class="keycap keycap--ghost"></span>
+                            <span class="keycap">W</span>
+                            <span class="keycap keycap--ghost"></span>
+                            <span class="keycap">A</span>
+                            <span class="keycap">S</span>
+                            <span class="keycap">D</span>
+                        </div>
+                        <p>Move o jogador</p>
+                    </div>
+                    <div class="control-item">
+                        <div class="key-row">
+                            <span class="keycap keycap--wide">Espaco</span>
+                        </div>
+                        <p>Alterna a vista</p>
+                    </div>
+                    <div class="control-item">
+                        <div class="key-row">
+                            <span class="keycap">R</span>
+                        </div>
+                        <p>Reinicia a partida</p>
+                    </div>
+                    <div class="control-item">
+                        <img class="mouse-icon" src="./Imagens/Menu/Controlos/mouse-icon.png" alt="Mouse">
+                        <p>Olhar em redor (vista 3D)</p>
+                    </div>
+                </div>
             </div>
             <div class="menu-section menu-slider">
                 <label for="sensitivity">Sensibilidade do rato: <span id="sensitivity-value" class="value"></span></label>
