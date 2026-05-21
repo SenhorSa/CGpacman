@@ -12,7 +12,8 @@ export const ghostSettings = {
     radiusRatio: 0.22,
     spacingUnits: 2,
     moveSpeed: 1.15,
-    collisionPadding: 0.03
+    collisionPadding: 0.03,
+    faceTurnSpeed: 5.0
 };
 
 export const coinSettings = {
@@ -347,14 +348,6 @@ function tryMoveGhost(ghost, mazeLayout, tileSize, deltaSeconds, centerMarkerCel
         ghost.position.x = nextX;
         ghost.position.z = nextZ;
 
-        // Atualizar rotação do fantasma para a direção do movimento
-        const dir = ghost.userData.direction;
-        if (dir && (dir.row || dir.column)) {
-            // Ângulo em radianos: atan2(-row, column) para alinhar com o eixo X/Z
-            const angle = Math.atan2(dir.row, dir.column);
-            ghost.rotation.y = angle;
-        }
-
         if (ghost.userData.direction.row) {
             ghost.position.x = Math.round(ghost.position.x / tileSize) * tileSize;
         } else if (ghost.userData.direction.column) {
@@ -379,6 +372,7 @@ function tryMoveGhost(ghost, mazeLayout, tileSize, deltaSeconds, centerMarkerCel
     }
 
     ghost.userData.direction = pickGhostDirection(ghost, mazeLayout, tileSize, directionOptions);
+    updateGhostFaceOrientation(ghost, deltaSeconds);
 }
 
 function collidesWithGhosts(ghosts, nextX, nextZ, playerRadius) {
@@ -479,6 +473,7 @@ function buildGhost3D(color, tileSize) {
     const eyeGeometry = new THREE.CircleGeometry(radius * 0.28, 20);
     const pupilGeometry = new THREE.CircleGeometry(radius * 0.12, 16);
 
+    const faceGroup = new THREE.Group();
     const leftEye = new THREE.Mesh(eyeGeometry, eyeWhiteMaterial);
     const rightEye = new THREE.Mesh(eyeGeometry, eyeWhiteMaterial);
     const leftPupil = new THREE.Mesh(pupilGeometry, eyePupilMaterial);
@@ -489,10 +484,13 @@ function buildGhost3D(color, tileSize) {
     leftPupil.position.set(-radius * 0.32, radius * 0.90, radius * 1.11);
     rightPupil.position.set(radius * 0.32, radius * 0.90, radius * 1.11);
 
-    group.add(body, skirt, leftEye, rightEye, leftPupil, rightPupil);
+    faceGroup.add(leftEye, rightEye, leftPupil, rightPupil);
+    group.add(body, skirt, faceGroup);
     group.userData.bodyMaterial = bodyMaterial;
     group.userData.bodyParts = [body, skirt];
     group.userData.eyeParts = [leftEye, rightEye, leftPupil, rightPupil];
+    group.userData.faceGroup = faceGroup;
+    group.userData.faceYaw = 0;
     group.scale.y = 1.25;
     return group;
 }
@@ -509,6 +507,7 @@ function buildGhost2D(color, tileSize) {
 
     const eyeWhiteMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
     const pupilMaterial = new THREE.MeshBasicMaterial({ color: 0x0f172a });
+    const faceGroup = new THREE.Group();
     const eye = new THREE.Mesh(new THREE.CircleGeometry(radius * 0.18, 12), eyeWhiteMaterial);
     const eye2 = new THREE.Mesh(new THREE.CircleGeometry(radius * 0.18, 12), eyeWhiteMaterial);
     eye.position.set(-radius * 0.25, radius * 0.35, 0.01);
@@ -519,10 +518,13 @@ function buildGhost2D(color, tileSize) {
     pupil.position.set(-radius * 0.25, radius * 0.3, 0.02);
     pupil2.position.set(radius * 0.25, radius * 0.3, 0.02);
 
-    group.add(head, body, eye, eye2, pupil, pupil2);
+    faceGroup.add(eye, eye2, pupil, pupil2);
+    group.add(head, body, faceGroup);
     group.userData.bodyMaterial = material;
     group.userData.bodyParts = [head, body];
     group.userData.eyeParts = [eye, eye2, pupil, pupil2];
+    group.userData.faceGroup = faceGroup;
+    group.userData.faceYaw = 0;
     group.rotation.x = -Math.PI / 2;
     return group;
 }
@@ -731,6 +733,11 @@ export function createGhosts({ scene, mazeLayout, centerMarkerCell, tileSize, wa
         if (!isNearCellCenter(ghost.position, tileSize)) {
                 ghost.userData.direction = pickGhostDirection(ghost, mazeLayout, tileSize, { blockCenterBox: false, centerMarkerCell });
         }
+        const dir = ghost.userData.direction ?? { row: 0, column: 0 };
+        ghost.userData.faceYaw = dir.row || dir.column ? Math.atan2(dir.column, dir.row) : 0;
+        if (ghost.userData.faceGroup) {
+            ghost.userData.faceGroup.rotation.y = ghost.userData.faceYaw;
+        }
     }
 
     return [blueGhost, redGhost, orangeGhost, pinkGhost];
@@ -761,7 +768,34 @@ export function updateGhosts({
         const resolvedMode = modeResolver ? modeResolver(ghost) : mode;
         const resolvedTarget = targetResolver ? targetResolver(ghost) : targetCell;
         tryMoveGhost(ghost, mazeLayout, tileSize, deltaSeconds, centerMarkerCell, resolvedMode, resolvedTarget);
+        updateGhostFaceOrientation(ghost, deltaSeconds);
     }
+}
+
+function updateGhostFaceOrientation(ghost, deltaSeconds) {
+    if (!ghost) {
+        return;
+    }
+
+    const {faceGroup} = ghost.userData;
+    if (!faceGroup) {
+        return;
+    }
+
+    const dir = ghost.userData.direction ?? { row: 0, column: 0 };
+    if (!dir.row && !dir.column) {
+        return;
+    }
+
+    const targetYaw = Math.atan2(dir.column, dir.row);
+    const currentYaw = ghost.userData.faceYaw ?? faceGroup.rotation.y;
+    const maxStep = ghostSettings.faceTurnSpeed * deltaSeconds;
+    const wrappedDelta = ((targetYaw - currentYaw + Math.PI) % (Math.PI * 2)) - Math.PI;
+    const clampedDelta = Math.abs(wrappedDelta) <= maxStep ? wrappedDelta : Math.sign(wrappedDelta) * maxStep;
+    const nextYaw = currentYaw + clampedDelta;
+
+    ghost.userData.faceYaw = nextYaw;
+    faceGroup.rotation.y = nextYaw;
 }
 
 function setGhostMaterialColor(ghost, hexColor) {
