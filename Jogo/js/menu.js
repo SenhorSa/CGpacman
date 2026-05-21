@@ -57,7 +57,10 @@ function hydrateScoreList() {
 
 	scoreEmpty.style.display = 'none';
 
-	for (const entry of scores.slice(0, 5)) {
+	const maxEntries = 5;
+	const scoreCount = Math.min(scores.length, maxEntries);
+	for (let index = 0; index < scoreCount; index += 1) {
+		const entry = scores[index];
 		const listItem = document.createElement('li');
 		const label = document.createElement('span');
 		const value = document.createElement('span');

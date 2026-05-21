@@ -293,15 +293,15 @@ function tryMoveGhost(ghost, mazeLayout, tileSize, deltaSeconds, centerMarkerCel
 
         // Atualizar rotação do fantasma para a direção do movimento
         const dir = ghost.userData.direction;
-        if (dir && (dir.row !== 0 || dir.column !== 0)) {
+        if (dir && (dir.row || dir.column)) {
             // Ângulo em radianos: atan2(-row, column) para alinhar com o eixo X/Z
             const angle = Math.atan2(dir.row, dir.column);
             ghost.rotation.y = angle;
         }
 
-        if (ghost.userData.direction.row !== 0) {
+        if (ghost.userData.direction.row) {
             ghost.position.x = Math.round(ghost.position.x / tileSize) * tileSize;
-        } else if (ghost.userData.direction.column !== 0) {
+        } else if (ghost.userData.direction.column) {
             ghost.position.z = Math.round(ghost.position.z / tileSize) * tileSize;
         }
         return;
