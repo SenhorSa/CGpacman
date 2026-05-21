@@ -209,32 +209,84 @@ function pickFleeDirection(ghost, mazeLayout, tileSize, targetCell, options = {}
     return bestAnyDirection;
 }
 
-function tryMoveGhost(ghost, mazeLayout, tileSize, deltaSeconds, centerMarkerCell, mode, targetCell) {
-    if (mode === 'return' && centerMarkerCell) {
-        const targetX = centerMarkerCell.column * tileSize;
-        const targetZ = centerMarkerCell.row * tileSize;
-        const dx = targetX - ghost.position.x;
-        const dz = targetZ - ghost.position.z;
-        const distance = Math.hypot(dx, dz);
+function pickShortestPathDirection(ghost, mazeLayout, tileSize, targetCell, options = {}) {
+    const { row: startRow, column: startColumn } = worldToCell(ghost.position.x, ghost.position.z, tileSize);
+    const { blockCenterBox, centerMarkerCell } = options;
 
-        if (distance <= tileSize * 0.4) {
-            ghost.position.x = targetX;
-            ghost.position.z = targetZ;
-            ghost.userData.direction = { row: 0, column: 0 };
-            return;
-        }
-
-        const step = (ghost.userData.speed ?? ghostSettings.moveSpeed) * deltaSeconds;
-        const scale = step / Math.max(distance, 0.001);
-        ghost.position.x += dx * scale;
-        ghost.position.z += dz * scale;
-        return;
+    if (startRow === targetCell.row && startColumn === targetCell.column) {
+        return ghost.userData.direction ?? { row: 0, column: 0 };
     }
 
+    const rows = mazeLayout.length;
+    const columns = mazeLayout[0].length;
+    const visited = Array.from({ length: rows }, () => Array(columns).fill(false));
+    const parent = Array.from({ length: rows }, () => Array(columns).fill(null));
+    const queue = [{ row: startRow, column: startColumn }];
+    visited[startRow][startColumn] = true;
+
+    while (queue.length > 0) {
+        const current = queue.shift();
+        if (!current) {
+            break;
+        }
+
+        if (current.row === targetCell.row && current.column === targetCell.column) {
+            break;
+        }
+
+        for (const direction of cardinalDirections) {
+            const nextRow = current.row + direction.row;
+            const nextColumn = current.column + direction.column;
+
+            if (!isInsideGrid(mazeLayout, nextRow, nextColumn)) {
+                continue;
+            }
+
+            if (mazeLayout[nextRow][nextColumn] !== 0) {
+                continue;
+            }
+
+            if (blockCenterBox && centerMarkerCell && isInsideCenterBox(nextRow, nextColumn, centerMarkerCell)) {
+                continue;
+            }
+
+            if (visited[nextRow][nextColumn]) {
+                continue;
+            }
+
+            visited[nextRow][nextColumn] = true;
+            parent[nextRow][nextColumn] = current;
+            queue.push({ row: nextRow, column: nextColumn });
+        }
+    }
+
+    if (!visited[targetCell.row]?.[targetCell.column]) {
+        return pickChaseDirection(ghost, mazeLayout, tileSize, targetCell, options);
+    }
+
+    let step = { row: targetCell.row, column: targetCell.column };
+    while (parent[step.row]?.[step.column]) {
+        const prev = parent[step.row][step.column];
+        if (!prev) {
+            break;
+        }
+        if (prev.row === startRow && prev.column === startColumn) {
+            break;
+        }
+        step = prev;
+    }
+
+    return {
+        row: step.row - startRow,
+        column: step.column - startColumn
+    };
+}
+
+function tryMoveGhost(ghost, mazeLayout, tileSize, deltaSeconds, centerMarkerCell, mode, targetCell) {
     const currentDirection = ghost.userData.direction ?? { row: 0, column: 0 };
     const blockCenterBox = mode === 'return' ? false : (ghost.userData.hasLeftBox ?? false);
     const baseRadius = ghost.userData.radius ?? 0;
-    const effectiveRadius = mode === 'return' ? baseRadius * 0.35 : baseRadius;
+    const effectiveRadius = baseRadius;
     const directionOptions = {
         blockCenterBox,
         centerMarkerCell,
@@ -244,10 +296,12 @@ function tryMoveGhost(ghost, mazeLayout, tileSize, deltaSeconds, centerMarkerCel
 
     const targetFallback = centerMarkerCell ?? worldToCell(ghost.position.x, ghost.position.z, tileSize);
     const resolvedTarget = targetCell ?? targetFallback;
-    const steeringMode = mode === 'return' ? 'chase' : mode;
+    const steeringMode = mode;
 
     if (currentDirection.row === 0 && currentDirection.column === 0) {
-        if (steeringMode === 'chase') {
+        if (steeringMode === 'return') {
+            ghost.userData.direction = pickShortestPathDirection(ghost, mazeLayout, tileSize, resolvedTarget, directionOptions);
+        } else if (steeringMode === 'chase') {
             ghost.userData.direction = pickChaseDirection(ghost, mazeLayout, tileSize, resolvedTarget, directionOptions);
         } else if (steeringMode === 'flee') {
             ghost.userData.direction = pickFleeDirection(ghost, mazeLayout, tileSize, resolvedTarget, directionOptions);
@@ -265,7 +319,9 @@ function tryMoveGhost(ghost, mazeLayout, tileSize, deltaSeconds, centerMarkerCel
 
     if (isNearCellCenter(ghost.position, tileSize)) {
         if (ghost.userData.canTurn ?? true) {
-            if (steeringMode === 'chase') {
+            if (steeringMode === 'return') {
+                ghost.userData.direction = pickShortestPathDirection(ghost, mazeLayout, tileSize, resolvedTarget, directionOptions);
+            } else if (steeringMode === 'chase') {
                 ghost.userData.direction = pickChaseDirection(ghost, mazeLayout, tileSize, resolvedTarget, directionOptions);
             } else if (steeringMode === 'flee') {
                 ghost.userData.direction = pickFleeDirection(ghost, mazeLayout, tileSize, resolvedTarget, directionOptions);
@@ -304,6 +360,11 @@ function tryMoveGhost(ghost, mazeLayout, tileSize, deltaSeconds, centerMarkerCel
         } else if (ghost.userData.direction.column !== 0) {
             ghost.position.z = Math.round(ghost.position.z / tileSize) * tileSize;
         }
+        return;
+    }
+
+    if (steeringMode === 'return') {
+        ghost.userData.direction = pickShortestPathDirection(ghost, mazeLayout, tileSize, resolvedTarget, directionOptions);
         return;
     }
 
@@ -723,6 +784,16 @@ function setGhostPartsVisibility(ghost, showBody) {
     }
 }
 
+function setGhostBodyOpacity(ghost, opacity) {
+    const {bodyMaterial} = ghost.userData;
+    if (!bodyMaterial) {
+        return;
+    }
+
+    bodyMaterial.transparent = opacity < 1;
+    bodyMaterial.opacity = opacity;
+}
+
 export function setGhostState(ghost, state) {
     if (!ghost) {
         return;
@@ -733,13 +804,16 @@ export function setGhostState(ghost, state) {
 
     if (state === 'eyes') {
         ghost.userData.speed = baseSpeed * 3;
-        setGhostPartsVisibility(ghost, false);
+        setGhostBodyOpacity(ghost, 0);
+        setGhostPartsVisibility(ghost, true);
     } else if (state === 'scared') {
         ghost.userData.speed = baseSpeed;
+        setGhostBodyOpacity(ghost, 1);
         setGhostMaterialColor(ghost, ghostFrightenedColor);
         setGhostPartsVisibility(ghost, true);
     } else {
         ghost.userData.speed = baseSpeed;
+        setGhostBodyOpacity(ghost, 1);
         setGhostMaterialColor(ghost, baseColor);
         setGhostPartsVisibility(ghost, true);
     }
@@ -760,15 +834,26 @@ export function setGhost2DState(ghost2d, state, baseColor) {
     } = ghost2d.userData;
     const resolvedBaseColor = baseColor ?? storedBaseColor ?? ghostColors.blue;
 
+    const setBodyOpacity = (opacity) => {
+        if (!bodyMaterial) {
+            return;
+        }
+        bodyMaterial.transparent = opacity < 1;
+        bodyMaterial.opacity = opacity;
+    };
+
     if (state === 'eyes') {
+        setBodyOpacity(0);
+
         for (const part of bodyParts) {
-            part.visible = false;
+            part.visible = true;
         }
 
         for (const part of eyeParts) {
             part.visible = true;
         }
     } else {
+        setBodyOpacity(1);
         const nextColor = state === 'scared' ? ghostFrightenedColor : resolvedBaseColor;
         if (bodyMaterial && bodyMaterial.color) {
             bodyMaterial.color.setHex(nextColor);
@@ -793,7 +878,7 @@ export function isGhostInsideCenterBox(ghost, centerMarkerCell, tileSize) {
     }
 
     const { row, column } = worldToCell(ghost.position.x, ghost.position.z, tileSize);
-    return isInsideCenterBox(row, column, centerMarkerCell);
+    return row === centerMarkerCell.row && column === centerMarkerCell.column;
 }
 
 export function playerIsTouchingGhosts({ playerX, playerZ, playerRadius, ghosts }) {
