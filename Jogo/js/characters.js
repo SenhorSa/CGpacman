@@ -239,19 +239,12 @@ function pickShortestPathDirection(ghost, mazeLayout, tileSize, targetCell, opti
             const nextRow = current.row + direction.row;
             const nextColumn = current.column + direction.column;
 
-            if (!isInsideGrid(mazeLayout, nextRow, nextColumn)) {
-                continue;
-            }
-
-            if (mazeLayout[nextRow][nextColumn] !== 0) {
-                continue;
-            }
-
-            if (blockCenterBox && centerMarkerCell && isInsideCenterBox(nextRow, nextColumn, centerMarkerCell)) {
-                continue;
-            }
-
-            if (visited[nextRow][nextColumn]) {
+            if (
+                !isInsideGrid(mazeLayout, nextRow, nextColumn)
+                || mazeLayout[nextRow][nextColumn] !== 0
+                || (blockCenterBox && centerMarkerCell && isInsideCenterBox(nextRow, nextColumn, centerMarkerCell))
+                || visited[nextRow][nextColumn]
+            ) {
                 continue;
             }
 
@@ -268,10 +261,7 @@ function pickShortestPathDirection(ghost, mazeLayout, tileSize, targetCell, opti
     let step = { row: targetCell.row, column: targetCell.column };
     while (parent[step.row]?.[step.column]) {
         const prev = parent[step.row][step.column];
-        if (!prev) {
-            break;
-        }
-        if (prev.row === startRow && prev.column === startColumn) {
+        if (!prev || (prev.row === startRow && prev.column === startColumn)) {
             break;
         }
         step = prev;
