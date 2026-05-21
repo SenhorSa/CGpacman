@@ -207,6 +207,31 @@
             z-index: 1;
         }
 
+        .pause-root {
+            position: fixed;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            background: rgba(10, 12, 18, 0.45);
+            backdrop-filter: blur(8px);
+            z-index: 25;
+            opacity: 1;
+            transition: opacity 0.25s ease;
+        }
+
+        .pause-root.is-hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .pause-panel {
+            width: min(92vw, 520px);
+        }
+
+        .pause-root .menu-back {
+            z-index: 26;
+        }
+
         .menu-root.is-hidden {
             opacity: 0;
             pointer-events: none;
@@ -506,14 +531,73 @@
                         <p>Reinicia a partida</p>
                     </div>
                     <div class="control-item">
+                        <div class="key-row">
+                            <span class="keycap">Esc</span>
+                        </div>
+                        <p>Pausa o jogo</p>
+                    </div>
+                    <div class="control-item">
                         <img class="mouse-icon" src="./Imagens/Menu/Controlos/mouse-icon.png" alt="Mouse">
                         <p>Olhar em redor (vista 3D)</p>
                     </div>
                 </div>
             </div>
-            <div class="menu-section menu-slider">
-                <label for="sensitivity">Sensibilidade do rato: <span id="sensitivity-value" class="value"></span></label>
-                <input id="sensitivity" type="range" min="0.001" max="0.008" step="0.0005">
+        </section>
+    </div>
+
+    <div id="pause-root" class="pause-root is-hidden">
+        <button id="pause-back" class="menu-back is-hidden" aria-label="Voltar">
+            <img src="./Imagens/Menu/go-back-arrow-icon.png" alt="" aria-hidden="true">
+        </button>
+
+        <section class="menu-panel pause-panel" data-view="pause-main">
+            <h1 class="menu-title">Jogo em pausa</h1>
+            <p class="menu-subtitle">Escolhe o que queres fazer.</p>
+            <div class="menu-actions">
+                <button id="pause-continue" class="primary">Continuar jogo</button>
+                <button id="pause-controls">Controlos</button>
+                <button id="pause-exit">Sair do jogo</button>
+            </div>
+        </section>
+
+        <section class="menu-panel pause-panel is-hidden" data-view="pause-controls">
+            <div class="menu-section">
+                <h1>Controlos</h1>
+                <div class="controls-block">
+                    <div class="control-item">
+                        <div class="keypad">
+                            <span class="keycap keycap--ghost"></span>
+                            <span class="keycap">W</span>
+                            <span class="keycap keycap--ghost"></span>
+                            <span class="keycap">A</span>
+                            <span class="keycap">S</span>
+                            <span class="keycap">D</span>
+                        </div>
+                        <p>Move o jogador</p>
+                    </div>
+                    <div class="control-item">
+                        <div class="key-row">
+                            <span class="keycap keycap--wide">Espaco</span>
+                        </div>
+                        <p>Alterna a vista</p>
+                    </div>
+                    <div class="control-item">
+                        <div class="key-row">
+                            <span class="keycap">R</span>
+                        </div>
+                        <p>Reinicia a partida</p>
+                    </div>
+                    <div class="control-item">
+                        <div class="key-row">
+                            <span class="keycap">Esc</span>
+                        </div>
+                        <p>Pausa o jogo</p>
+                    </div>
+                    <div class="control-item">
+                        <img class="mouse-icon" src="./Imagens/Menu/Controlos/mouse-icon.png" alt="Mouse">
+                        <p>Olhar em redor (vista 3D)</p>
+                    </div>
+                </div>
             </div>
         </section>
     </div>

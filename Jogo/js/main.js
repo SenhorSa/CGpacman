@@ -40,6 +40,13 @@ export function startGame() {
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     appElement.appendChild(renderer.domElement);
 
+    const pauseRoot = document.getElementById('pause-root');
+    const pauseBackButton = document.getElementById('pause-back');
+    const pauseContinueButton = document.getElementById('pause-continue');
+    const pauseControlsButton = document.getElementById('pause-controls');
+    const pauseExitButton = document.getElementById('pause-exit');
+    const pausePanels = pauseRoot ? Array.from(pauseRoot.querySelectorAll('[data-view]')) : [];
+
     const scoreElement = null;
     const stateElement = null;
 
@@ -74,6 +81,7 @@ export function startGame() {
     let powerModeActive = false;
     let powerModeUntil = 0;
     let ghostEatStreak = 0;
+    let pauseStartedAt = 0;
 
     const coinWrapper = document.createElement('div');
     coinWrapper.style.position = 'fixed';
@@ -318,6 +326,53 @@ export function startGame() {
         stateElement.textContent = message;
     }
 
+    function showPauseView(viewName) {
+        if (!pauseRoot) {
+            return;
+        }
+
+        for (const panel of pausePanels) {
+            const isTarget = panel.getAttribute('data-view') === viewName;
+            panel.classList.toggle('is-hidden', !isTarget);
+        }
+
+        if (pauseBackButton) {
+            const showBack = viewName !== 'pause-main';
+            pauseBackButton.classList.toggle('is-hidden', !showBack);
+        }
+    }
+
+    function pauseGame() {
+        if (!pauseRoot || gameState !== 'playing') {
+            return;
+        }
+
+        gameState = 'paused';
+        pauseStartedAt = performance.now();
+        pauseRoot.classList.remove('is-hidden');
+        showPauseView('pause-main');
+
+        controls.forward = false;
+        controls.backward = false;
+        controls.left = false;
+        controls.right = false;
+        controls.dragging = false;
+    }
+
+    function resumeGame() {
+        if (!pauseRoot || gameState !== 'paused') {
+            return;
+        }
+
+        const now = performance.now();
+        if (powerModeActive && pauseStartedAt > 0) {
+            powerModeUntil += now - pauseStartedAt;
+        }
+        pauseStartedAt = 0;
+        pauseRoot.classList.add('is-hidden');
+        gameState = 'playing';
+    }
+
     function setScore(value) {
         if (!scoreElement) {
             return;
@@ -476,6 +531,20 @@ export function startGame() {
     }
 
     window.addEventListener('keydown', (event) => {
+        if (event.code === 'Escape') {
+            event.preventDefault();
+            if (gameState === 'playing') {
+                pauseGame();
+            } else if (gameState === 'paused') {
+                if (pauseBackButton && !pauseBackButton.classList.contains('is-hidden')) {
+                    showPauseView('pause-main');
+                } else {
+                    resumeGame();
+                }
+            }
+            return;
+        }
+
         if (event.code === 'KeyR') {
             window.location.reload();
             return;
@@ -529,7 +598,7 @@ export function startGame() {
     });
 
     renderer.domElement.addEventListener('pointerdown', (event) => {
-        if (activeView !== 'perspective') {
+        if (activeView !== 'perspective' || gameState !== 'playing') {
             return;
         }
 
@@ -540,7 +609,7 @@ export function startGame() {
     });
 
     renderer.domElement.addEventListener('pointermove', (event) => {
-        if (!controls.dragging || activeView !== 'perspective') {
+        if (!controls.dragging || activeView !== 'perspective' || gameState !== 'playing') {
             return;
         }
 
@@ -727,4 +796,9 @@ export function startGame() {
     activatePerspectiveView();
     onWindowResize();
     animate();
+
+    pauseContinueButton?.addEventListener('click', resumeGame);
+    pauseControlsButton?.addEventListener('click', () => showPauseView('pause-controls'));
+    pauseExitButton?.addEventListener('click', () => window.location.reload());
+    pauseBackButton?.addEventListener('click', () => showPauseView('pause-main'));
 }

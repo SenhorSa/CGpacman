@@ -4,8 +4,7 @@ import {
 	createCoins,
 	createGhosts,
 	updateCoins,
-	updateGhosts,
-	playerSettings
+	updateGhosts
 } from './characters.js';
 import { createMaze, getCenterMarkerCell, getMazeData } from './maze.js';
 
@@ -16,8 +15,6 @@ const scoresButton = document.getElementById('menu-scores');
 const controlsButton = document.getElementById('menu-controls');
 const scoreList = document.getElementById('score-list');
 const scoreEmpty = document.getElementById('score-empty');
-const sensitivityInput = document.getElementById('sensitivity');
-const sensitivityValue = document.getElementById('sensitivity-value');
 const mazeCanvasA = document.getElementById('menu-maze-canvas-a');
 const mazeCanvasB = document.getElementById('menu-maze-canvas-b');
 
@@ -31,13 +28,6 @@ function showView(viewName) {
 
 	const showBack = viewName !== 'main';
 	backButton?.classList.toggle('is-hidden', !showBack);
-}
-
-function updateSensitivityLabel(value) {
-	if (!sensitivityValue) {
-		return;
-	}
-	sensitivityValue.textContent = value.toFixed(4);
 }
 
 function hydrateScoreList() {
@@ -76,18 +66,6 @@ function hydrateScoreList() {
 function startNewGame() {
 	startGame();
 	menuRoot?.classList.add('is-hidden');
-}
-
-if (sensitivityInput) {
-	const initialValue = Number(playerSettings.mouseSensitivity ?? 0.0025);
-	sensitivityInput.value = String(initialValue);
-	updateSensitivityLabel(initialValue);
-
-	sensitivityInput.addEventListener('input', (event) => {
-		const nextValue = Number(event.target.value);
-		playerSettings.mouseSensitivity = nextValue;
-		updateSensitivityLabel(nextValue);
-	});
 }
 
 startButton?.addEventListener('click', startNewGame);
