@@ -426,34 +426,31 @@ function buildGhost3D(color, tileSize) {
     profile.push(new THREE.Vector2(radius * 1.15, -radius * 0.2));
     profile.push(new THREE.Vector2(0, -radius * 0.2));
 
-    const body = new THREE.Mesh(new THREE.LatheGeometry(profile, 32), bodyMaterial);
+    const bodyGeometry = new THREE.LatheGeometry(profile, 48);
+    const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
     body.position.y = -radius * 0.08;
 
-    const skirtHeight = radius * 0.8;
-    const skirtGeometry = new THREE.CylinderGeometry(radius * 1.02, radius * 0.95, skirtHeight, 48, 2, true);
-    const skirt = new THREE.Mesh(skirtGeometry, bodyMaterial);
-    skirt.position.y = -radius * 0.38;
-
-    const skirtPositions = skirtGeometry.attributes.position;
+    const bodyPositions = bodyGeometry.attributes.position;
     const waveCount = 10;
     const waveAmplitude = radius * 0.04;
+    const waveStartY = -radius * 0.04;
 
-    for (let i = 0; i < skirtPositions.count; i += 1) {
-        const x = skirtPositions.getX(i);
-        const y = skirtPositions.getY(i);
-        const z = skirtPositions.getZ(i);
-        const angle = Math.atan2(z, x);
-        const wave = Math.sin(angle * waveCount) * waveAmplitude;
+    for (let i = 0; i < bodyPositions.count; i += 1) {
+        const x = bodyPositions.getX(i);
+        const y = bodyPositions.getY(i);
+        const z = bodyPositions.getZ(i);
 
-        if (y < 0) {
-            skirtPositions.setY(i, y - wave);
-            skirtPositions.setX(i, x * 0.98);
-            skirtPositions.setZ(i, z * 0.98);
+        if (y < waveStartY) {
+            const angle = Math.atan2(z, x);
+            const wave = Math.sin(angle * waveCount) * waveAmplitude;
+            bodyPositions.setY(i, y - wave);
+            bodyPositions.setX(i, x * 0.98);
+            bodyPositions.setZ(i, z * 0.98);
         }
     }
 
-    skirtPositions.needsUpdate = true;
-    skirtGeometry.computeVertexNormals();
+    bodyPositions.needsUpdate = true;
+    bodyGeometry.computeVertexNormals();
 
 
     const eyeWhiteMaterial = new THREE.MeshBasicMaterial({
@@ -485,9 +482,9 @@ function buildGhost3D(color, tileSize) {
     rightPupil.position.set(radius * 0.32, radius * 0.90, radius * 1.11);
 
     faceGroup.add(leftEye, rightEye, leftPupil, rightPupil);
-    group.add(body, skirt, faceGroup);
+    group.add(body, faceGroup);
     group.userData.bodyMaterial = bodyMaterial;
-    group.userData.bodyParts = [body, skirt];
+    group.userData.bodyParts = [body];
     group.userData.eyeParts = [leftEye, rightEye, leftPupil, rightPupil];
     group.userData.faceGroup = faceGroup;
     group.userData.faceYaw = 0;
