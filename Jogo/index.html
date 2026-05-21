@@ -279,6 +279,11 @@
             pointer-events: none;
         }
 
+        .autostart-game .menu-root {
+            opacity: 0;
+            pointer-events: none;
+        }
+
         .menu-panel {
             position: relative;
             width: min(92vw, 560px);
@@ -522,6 +527,11 @@
     <div id="minimap" class="minimap">
         <canvas id="minimap-canvas" aria-label="Mini-mapa" role="img"></canvas>
     </div>
+    <script>
+        if (sessionStorage.getItem('pacman3d_autostart')) {
+            document.documentElement.classList.add('autostart-game');
+        }
+    </script>
     <div id="menu-root" class="menu-root">
         <canvas id="menu-maze-canvas-a" class="menu-maze-canvas" aria-hidden="true"></canvas>
         <canvas id="menu-maze-canvas-b" class="menu-maze-canvas" aria-hidden="true"></canvas>
@@ -643,6 +653,17 @@
                         <p>Olhar em redor (vista 3D)</p>
                     </div>
                 </div>
+            </div>
+        </section>
+    </div>
+
+    <div id="gameover-root" class="pause-root is-hidden">
+        <section class="menu-panel pause-panel">
+            <h1 id="gameover-title" class="menu-title">Game Over</h1>
+            <p id="gameover-score" class="menu-subtitle">Pontos: 0</p>
+            <div class="menu-actions">
+                <button id="gameover-new" class="primary">Novo jogo</button>
+                <button id="gameover-exit">Sair</button>
             </div>
         </section>
     </div>

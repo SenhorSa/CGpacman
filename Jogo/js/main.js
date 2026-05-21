@@ -62,6 +62,12 @@ export function startGame() {
     const pauseExitButton = document.getElementById('pause-exit');
     const pausePanels = pauseRoot ? Array.from(pauseRoot.querySelectorAll('[data-view]')) : [];
 
+    const gameoverRoot = document.getElementById('gameover-root');
+    const gameoverTitle = document.getElementById('gameover-title');
+    const gameoverScore = document.getElementById('gameover-score');
+    const gameoverNewButton = document.getElementById('gameover-new');
+    const gameoverExitButton = document.getElementById('gameover-exit');
+
     const scoreElement = document.createElement('div');
     scoreElement.className = 'score-pill';
     scoreElement.textContent = 'Pontos: 0';
@@ -491,11 +497,23 @@ export function startGame() {
         return -1;
     }
 
-    function endGame(message) {
+    function endGame(result) {
         gameState = 'finished';
-        setHudState(message);
+        setHudState('');
         powerModeActive = false;
         powerTimerElement.classList.add('is-hidden');
+        pauseRoot?.classList.add('is-hidden');
+
+        if (gameoverRoot) {
+            const isWin = result === 'win';
+            if (gameoverTitle) {
+                gameoverTitle.textContent = isWin ? 'Parabens!! Vitoria' : 'Game Over';
+            }
+            if (gameoverScore) {
+                gameoverScore.textContent = `Pontos: ${totalScore}`;
+            }
+            gameoverRoot.classList.remove('is-hidden');
+        }
     }
 
     setScore(totalScore);
@@ -812,7 +830,7 @@ export function startGame() {
                     totalScore += bonus;
                     setScore(totalScore);
                 } else if (ghost.userData.state !== 'eyes') {
-                    endGame('Game over. Um fantasma apanhou o jogador. Pressiona R para reiniciar.');
+                    endGame('lose');
                 }
             }
 
@@ -835,7 +853,7 @@ export function startGame() {
             }
 
             if (collectedCoinsCount >= coins.length) {
-                endGame('Venceste. Todas as moedas foram apanhadas. Pressiona R para reiniciar.');
+                endGame('win');
             }
         }
 
@@ -954,4 +972,10 @@ export function startGame() {
     pauseControlsButton?.addEventListener('click', () => showPauseView('pause-controls'));
     pauseExitButton?.addEventListener('click', () => window.location.reload());
     pauseBackButton?.addEventListener('click', () => showPauseView('pause-main'));
+
+    gameoverNewButton?.addEventListener('click', () => {
+        sessionStorage.setItem('pacman3d_autostart', '1');
+        window.location.reload();
+    });
+    gameoverExitButton?.addEventListener('click', () => window.location.reload());
 }

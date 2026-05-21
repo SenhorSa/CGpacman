@@ -70,16 +70,18 @@ function startNewGame() {
 
 function autoStartIfRequested() {
 	if (!menuRoot) {
-		return;
+		return false;
 	}
 
 	const shouldAutoStart = sessionStorage.getItem('pacman3d_autostart');
 	if (!shouldAutoStart) {
-		return;
+		return false;
 	}
 
 	sessionStorage.removeItem('pacman3d_autostart');
+	menuRoot.classList.add('is-hidden');
 	startNewGame();
+	return true;
 }
 
 startButton?.addEventListener('click', startNewGame);
@@ -90,8 +92,9 @@ scoresButton?.addEventListener('click', () => {
 controlsButton?.addEventListener('click', () => showView('controls'));
 backButton?.addEventListener('click', () => showView('main'));
 
-showView('main');
-autoStartIfRequested();
+if (!autoStartIfRequested()) {
+	showView('main');
+}
 
 function setupMenuMazeBackground() {
 	if (!mazeCanvasA || !mazeCanvasB) {
