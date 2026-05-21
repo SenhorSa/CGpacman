@@ -649,6 +649,9 @@ export function startGame() {
                 if (ghost.userData.state === 'eyes' && isGhostInsideCenterBox(ghost, centerMarkerCell, tileSize)) {
                     setGhostState(ghost, 'normal');
                     setGhost2DState(ghost2D, 'normal', ghost.userData.color);
+                    ghost.userData.hasLeftBox = false;
+                    ghost.userData.canTurn = true;
+                    ghost.userData.direction = { row: 0, column: 0 };
                 }
             }
 
