@@ -304,7 +304,8 @@ function setupMenuMazeBackground() {
 
 		updateCoins({
 			elapsedSeconds: clock.elapsedTime,
-			coins
+			coins,
+			view: 'perspective'
 		});
 
 		requestAnimationFrame(render);
