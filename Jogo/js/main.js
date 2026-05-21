@@ -40,6 +40,21 @@ export function startGame() {
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     appElement.appendChild(renderer.domElement);
 
+    const minimapRoot = document.getElementById('minimap');
+    const minimapCanvas = document.getElementById('minimap-canvas');
+    const minimapRenderer = minimapCanvas
+        ? new THREE.WebGLRenderer({ canvas: minimapCanvas, alpha: true, antialias: true, powerPreference: 'high-performance' })
+        : null;
+    if (minimapRenderer) {
+        minimapRenderer.setClearColor(0x000000, 0);
+        minimapRenderer.outputColorSpace = THREE.SRGBColorSpace;
+    }
+    const minimapSize = 4;
+    const minimapHeight = 12;
+    const minimapCamera = minimapRenderer
+        ? new THREE.OrthographicCamera(-minimapSize, minimapSize, minimapSize, -minimapSize, 0.1, 60)
+        : null;
+
     const pauseRoot = document.getElementById('pause-root');
     const pauseBackButton = document.getElementById('pause-back');
     const pauseContinueButton = document.getElementById('pause-continue');
@@ -47,7 +62,10 @@ export function startGame() {
     const pauseExitButton = document.getElementById('pause-exit');
     const pausePanels = pauseRoot ? Array.from(pauseRoot.querySelectorAll('[data-view]')) : [];
 
-    const scoreElement = null;
+    const scoreElement = document.createElement('div');
+    scoreElement.className = 'score-pill';
+    scoreElement.textContent = 'Pontos: 0';
+    document.body.appendChild(scoreElement);
     const stateElement = null;
 
     const powerTimerElement = document.createElement('div');
@@ -295,7 +313,21 @@ export function startGame() {
     }
 
     const { pacman3D, pacman2D } = createPacmanModels({ tileSize });
+    const minimapPacman = new THREE.Mesh(
+        new THREE.CircleGeometry(tileSize * 0.22, 20),
+        new THREE.MeshBasicMaterial({ color: 0xfacc15 })
+    );
+    minimapPacman.rotation.x = -Math.PI / 2;
+    minimapPacman.visible = false;
+    scene.add(minimapPacman);
     scene.add(pacman3D, pacman2D);
+
+    let lastPlayerX = perspectiveCamera.position.x;
+    let lastPlayerZ = perspectiveCamera.position.z;
+    const lastMoveDir = new THREE.Vector3(1, 0, 0);
+    let pacman3DYaw = Math.PI;
+    let pacman2DYaw = 0;
+    const pacmanTurnSpeed = 12;
 
     const ghostCells = ghosts.map((ghost) => ({
         row: Math.round(ghost.position.z / tileSize),
@@ -473,6 +505,9 @@ export function startGame() {
         activeCamera = perspectiveCamera;
         activeView = 'perspective';
         controls.view = 'perspective';
+        if (minimapRoot) {
+            minimapRoot.style.display = '';
+        }
         floor.material = floorMaterialPerspective;
         ceiling.visible = true;
 
@@ -499,6 +534,9 @@ export function startGame() {
         activeCamera = orthographicCamera;
         activeView = 'orthographic';
         controls.view = 'orthographic';
+        if (minimapRoot) {
+            minimapRoot.style.display = 'none';
+        }
         floor.material = floorMaterialOrthographic;
         ceiling.visible = false;
 
@@ -530,6 +568,14 @@ export function startGame() {
         activatePerspectiveView();
     }
 
+    function stepAngle(current, target, maxStep) {
+        const delta = Math.atan2(Math.sin(target - current), Math.cos(target - current));
+        if (Math.abs(delta) <= maxStep) {
+            return target;
+        }
+        return current + Math.sign(delta) * maxStep;
+    }
+
     window.addEventListener('keydown', (event) => {
         if (event.code === 'Escape') {
             event.preventDefault();
@@ -546,6 +592,7 @@ export function startGame() {
         }
 
         if (event.code === 'KeyR') {
+            sessionStorage.setItem('pacman3d_autostart', '1');
             window.location.reload();
             return;
         }
@@ -644,6 +691,13 @@ export function startGame() {
         orthographicCamera.top = halfMazeHeightWithMargin;
         orthographicCamera.bottom = -halfMazeHeightWithMargin;
         orthographicCamera.updateProjectionMatrix();
+
+        if (minimapRenderer && minimapRoot) {
+            const size = minimapRoot.clientWidth || 160;
+            const dpr = Math.min(window.devicePixelRatio, 2);
+            minimapRenderer.setPixelRatio(dpr);
+            minimapRenderer.setSize(size, size, false);
+        }
     }
 
     const clock = new THREE.Clock();
@@ -653,6 +707,9 @@ export function startGame() {
         const now = performance.now();
 
         if (gameState === 'playing') {
+            const prevX = perspectiveCamera.position.x;
+            const prevZ = perspectiveCamera.position.z;
+
             updateCoins({
                 elapsedSeconds: clock.elapsedTime,
                 coins,
@@ -704,6 +761,27 @@ export function startGame() {
                 }
             });
 
+            const movedX = perspectiveCamera.position.x - prevX;
+            const movedZ = perspectiveCamera.position.z - prevZ;
+            if (movedX * movedX + movedZ * movedZ > 1e-6) {
+                lastMoveDir.set(movedX, 0, movedZ).normalize();
+            }
+
+            const target3DYaw = controls.yaw + Math.PI;
+            pacman3DYaw = stepAngle(pacman3DYaw, target3DYaw, pacmanTurnSpeed * deltaSeconds);
+            pacman3D.rotation.y = pacman3DYaw;
+
+            let target2DYaw = pacman2DYaw;
+            if (Math.abs(lastMoveDir.x) >= Math.abs(lastMoveDir.z)) {
+                target2DYaw = 0;
+                pacman2D.scale.x = lastMoveDir.x >= 0 ? 1 : -1;
+            } else {
+                pacman2D.scale.x = 1;
+                target2DYaw = lastMoveDir.z <= 0 ? -3 * Math.PI / 2 : -Math.PI / 2;
+            }
+            pacman2DYaw = stepAngle(pacman2DYaw, target2DYaw, pacmanTurnSpeed * deltaSeconds);
+            pacman2D.rotation.z = pacman2DYaw;
+
             for (let index = 0; index < ghosts.length; index += 1) {
                 const ghost = ghosts[index];
                 const ghost2D = ghost2DModels[index];
@@ -747,7 +825,8 @@ export function startGame() {
 
             if (coinResult.collectedCount > 0) {
                 collectedCoinsCount += coinResult.collectedCount;
-                totalScore += coinResult.collectedCount;
+                const normalCoins = coinResult.collectedCount - coinResult.powerCollected;
+                totalScore += normalCoins + coinResult.powerCollected * 5;
                 setScore(totalScore);
             }
 
@@ -788,8 +867,82 @@ export function startGame() {
             pacman2DHeight,
             perspectiveCamera.position.z
         );
+        minimapPacman.position.set(
+            perspectiveCamera.position.x,
+            pacman2DHeight,
+            perspectiveCamera.position.z
+        );
+
+        lastPlayerX = perspectiveCamera.position.x;
+        lastPlayerZ = perspectiveCamera.position.z;
 
         renderer.render(scene, activeCamera);
+
+        if (minimapRenderer && minimapCamera) {
+            const playerX = perspectiveCamera.position.x;
+            const playerZ = perspectiveCamera.position.z;
+            minimapCamera.position.set(playerX, minimapHeight, playerZ);
+            minimapCamera.lookAt(playerX, 0, playerZ);
+
+            const prevCeilingVisible = ceiling.visible;
+            const prevFloorMaterial = floor.material;
+            const prevPacman3DVisible = pacman3D.visible;
+            const prevPacman2DVisible = pacman2D.visible;
+            const prevGhostVisibility = ghosts.map((ghost) => ghost.visible);
+            const prevGhost2DVisibility = ghost2DModels.map((ghost2d) => ghost2d.visible);
+            const prevWallMaterials = mazeGroup.children.map((wall) => wall.material);
+
+            ceiling.visible = false;
+            floor.material = floorMaterialOrthographic;
+            pacman3D.visible = false;
+            pacman2D.visible = false;
+            minimapPacman.visible = true;
+
+            ghosts.forEach((ghost) => {
+                ghost.visible = false;
+            });
+            ghost2DModels.forEach((ghost2d) => {
+                ghost2d.visible = true;
+            });
+
+            mazeGroup.children.forEach((wall, index) => {
+                if (wall.userData?.isPanel) {
+                    return;
+                }
+                wall.material = wallMaterialOrthographic;
+                prevWallMaterials[index] = prevWallMaterials[index] ?? wall.material;
+            });
+
+            updateCoins({
+                elapsedSeconds: clock.elapsedTime,
+                coins,
+                view: 'orthographic'
+            });
+
+            minimapRenderer.render(scene, minimapCamera);
+
+            ceiling.visible = prevCeilingVisible;
+            floor.material = prevFloorMaterial;
+            pacman3D.visible = prevPacman3DVisible;
+            pacman2D.visible = prevPacman2DVisible;
+            minimapPacman.visible = false;
+
+            ghosts.forEach((ghost, index) => {
+                ghost.visible = prevGhostVisibility[index];
+            });
+            ghost2DModels.forEach((ghost2d, index) => {
+                ghost2d.visible = prevGhost2DVisibility[index];
+            });
+            mazeGroup.children.forEach((wall, index) => {
+                wall.material = prevWallMaterials[index];
+            });
+
+            updateCoins({
+                elapsedSeconds: clock.elapsedTime,
+                coins,
+                view: activeView
+            });
+        }
         requestAnimationFrame(animate);
     }
 
