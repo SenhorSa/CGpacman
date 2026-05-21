@@ -88,6 +88,59 @@
             line-height: 1.25;
         }
 
+        .power-timer {
+            position: fixed;
+            top: 16px;
+            right: 16px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            border-radius: 999px;
+            background: rgba(8, 12, 18, 0.72);
+            border: 1px solid var(--border);
+            color: var(--accent);
+            font-size: 0.86rem;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+            z-index: 12;
+            pointer-events: none;
+        }
+
+        .power-timer.is-hidden {
+            display: none;
+        }
+
+        .power-timer__clock {
+            position: relative;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            border: 2px solid var(--accent);
+        }
+
+        .power-timer__clock::before,
+        .power-timer__clock::after {
+            content: "";
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 2px;
+            background: var(--accent);
+            transform-origin: bottom center;
+            border-radius: 2px;
+        }
+
+        .power-timer__clock::before {
+            height: 6px;
+            transform: translate(-50%, -100%) rotate(0deg);
+        }
+
+        .power-timer__clock::after {
+            height: 4px;
+            transform: translate(-50%, -100%) rotate(90deg);
+        }
+
         .footer {
             position: fixed;
             right: 16px;

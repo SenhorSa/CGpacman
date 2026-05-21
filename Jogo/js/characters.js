@@ -29,6 +29,8 @@ const ghostColors = {
     pink: 0xec4899
 };
 
+const ghostFrightenedColor = 0x1e3a8a;
+
 const cardinalDirections = [
     { row: -1, column: 0 },
     { row: 1, column: 0 },
@@ -177,20 +179,81 @@ function pickChaseDirection(ghost, mazeLayout, tileSize, targetCell, options = {
     return bestAnyDirection;
 }
 
+function pickFleeDirection(ghost, mazeLayout, tileSize, targetCell, options = {}) {
+    const { row, column } = worldToCell(ghost.position.x, ghost.position.z, tileSize);
+    const availableDirections = getAvailableDirections(mazeLayout, row, column, {
+        ...options,
+        ghostRadius: ghost.userData.radius,
+        tileSize
+    });
+
+    if (availableDirections.length === 0) {
+        return ghost.userData.direction ?? { row: 0, column: 0 };
+    }
+
+    let bestAnyDirection = availableDirections[0];
+    let bestAnyScore = Number.NEGATIVE_INFINITY;
+
+    for (const direction of availableDirections) {
+        const nextRow = row + direction.row;
+        const nextColumn = column + direction.column;
+        const dx = targetCell.column - nextColumn;
+        const dz = targetCell.row - nextRow;
+        const distance = dx * dx + dz * dz;
+        if (distance > bestAnyScore) {
+            bestAnyScore = distance;
+            bestAnyDirection = direction;
+        }
+    }
+
+    return bestAnyDirection;
+}
+
 function tryMoveGhost(ghost, mazeLayout, tileSize, deltaSeconds, centerMarkerCell, mode, targetCell) {
+    if (mode === 'return' && centerMarkerCell) {
+        const targetX = centerMarkerCell.column * tileSize;
+        const targetZ = centerMarkerCell.row * tileSize;
+        const dx = targetX - ghost.position.x;
+        const dz = targetZ - ghost.position.z;
+        const distance = Math.hypot(dx, dz);
+
+        if (distance <= tileSize * 0.4) {
+            ghost.position.x = targetX;
+            ghost.position.z = targetZ;
+            ghost.userData.direction = { row: 0, column: 0 };
+            return;
+        }
+
+        const step = (ghost.userData.speed ?? ghostSettings.moveSpeed) * deltaSeconds;
+        const scale = step / Math.max(distance, 0.001);
+        ghost.position.x += dx * scale;
+        ghost.position.z += dz * scale;
+        return;
+    }
+
     const currentDirection = ghost.userData.direction ?? { row: 0, column: 0 };
-    const blockCenterBox = ghost.userData.hasLeftBox ?? false;
+    const blockCenterBox = mode === 'return' ? false : (ghost.userData.hasLeftBox ?? false);
+    const baseRadius = ghost.userData.radius ?? 0;
+    const effectiveRadius = mode === 'return' ? baseRadius * 0.35 : baseRadius;
     const directionOptions = {
         blockCenterBox,
         centerMarkerCell,
-        ghostRadius: ghost.userData.radius,
+        ghostRadius: effectiveRadius,
         tileSize
     };
 
+    const targetFallback = centerMarkerCell ?? worldToCell(ghost.position.x, ghost.position.z, tileSize);
+    const resolvedTarget = targetCell ?? targetFallback;
+    const steeringMode = mode === 'return' ? 'chase' : mode;
+
     if (currentDirection.row === 0 && currentDirection.column === 0) {
-        ghost.userData.direction = mode === 'chase'
-            ? pickChaseDirection(ghost, mazeLayout, tileSize, targetCell, directionOptions)
-            : pickGhostDirection(ghost, mazeLayout, tileSize, directionOptions);
+        if (steeringMode === 'chase') {
+            ghost.userData.direction = pickChaseDirection(ghost, mazeLayout, tileSize, resolvedTarget, directionOptions);
+        } else if (steeringMode === 'flee') {
+            ghost.userData.direction = pickFleeDirection(ghost, mazeLayout, tileSize, resolvedTarget, directionOptions);
+        } else {
+            ghost.userData.direction = pickGhostDirection(ghost, mazeLayout, tileSize, directionOptions);
+        }
     }
 
     if (centerMarkerCell) {
@@ -202,9 +265,13 @@ function tryMoveGhost(ghost, mazeLayout, tileSize, deltaSeconds, centerMarkerCel
 
     if (isNearCellCenter(ghost.position, tileSize)) {
         if (ghost.userData.canTurn ?? true) {
-            ghost.userData.direction = mode === 'chase'
-                ? pickChaseDirection(ghost, mazeLayout, tileSize, targetCell, directionOptions)
-                : pickGhostDirection(ghost, mazeLayout, tileSize, directionOptions);
+            if (steeringMode === 'chase') {
+                ghost.userData.direction = pickChaseDirection(ghost, mazeLayout, tileSize, resolvedTarget, directionOptions);
+            } else if (steeringMode === 'flee') {
+                ghost.userData.direction = pickFleeDirection(ghost, mazeLayout, tileSize, resolvedTarget, directionOptions);
+            } else {
+                ghost.userData.direction = pickGhostDirection(ghost, mazeLayout, tileSize, directionOptions);
+            }
             ghost.userData.canTurn = false;
         }
     } else {
@@ -216,9 +283,8 @@ function tryMoveGhost(ghost, mazeLayout, tileSize, deltaSeconds, centerMarkerCel
     const nextX = ghost.position.x + ghost.userData.direction.column * step;
     const nextZ = ghost.position.z + ghost.userData.direction.row * step;
     const nextCell = worldToCell(nextX, nextZ, tileSize);
-    const ghostRadius = ghost.userData.radius ?? 0;
-    const effectiveRadius = ghostRadius + ghostSettings.collisionPadding;
-    const canMove = isWalkableAt(mazeLayout, nextX, nextZ, effectiveRadius)
+    const paddedRadius = effectiveRadius + ghostSettings.collisionPadding;
+    const canMove = isWalkableAt(mazeLayout, nextX, nextZ, paddedRadius)
         && (!blockCenterBox || !centerMarkerCell || !isInsideCenterBox(nextCell.row, nextCell.column, centerMarkerCell));
 
     if (canMove) {
@@ -241,9 +307,17 @@ function tryMoveGhost(ghost, mazeLayout, tileSize, deltaSeconds, centerMarkerCel
         return;
     }
 
-    ghost.userData.direction = mode === 'chase'
-        ? pickChaseDirection(ghost, mazeLayout, tileSize, targetCell, directionOptions)
-        : pickGhostDirection(ghost, mazeLayout, tileSize, directionOptions);
+    if (steeringMode === 'chase') {
+        ghost.userData.direction = pickChaseDirection(ghost, mazeLayout, tileSize, resolvedTarget, directionOptions);
+        return;
+    }
+
+    if (steeringMode === 'flee') {
+        ghost.userData.direction = pickFleeDirection(ghost, mazeLayout, tileSize, resolvedTarget, directionOptions);
+        return;
+    }
+
+    ghost.userData.direction = pickGhostDirection(ghost, mazeLayout, tileSize, directionOptions);
 }
 
 function collidesWithGhosts(ghosts, nextX, nextZ, playerRadius) {
@@ -355,6 +429,9 @@ function buildGhost3D(color, tileSize) {
     rightPupil.position.set(radius * 0.32, radius * 0.90, radius * 1.11);
 
     group.add(body, skirt, leftEye, rightEye, leftPupil, rightPupil);
+    group.userData.bodyMaterial = bodyMaterial;
+    group.userData.bodyParts = [body, skirt];
+    group.userData.eyeParts = [leftEye, rightEye, leftPupil, rightPupil];
     group.scale.y = 1.25;
     return group;
 }
@@ -382,6 +459,9 @@ function buildGhost2D(color, tileSize) {
     pupil2.position.set(radius * 0.25, radius * 0.3, 0.02);
 
     group.add(head, body, eye, eye2, pupil, pupil2);
+    group.userData.bodyMaterial = material;
+    group.userData.bodyParts = [head, body];
+    group.userData.eyeParts = [eye, eye2, pupil, pupil2];
     group.rotation.x = -Math.PI / 2;
     return group;
 }
@@ -542,37 +622,45 @@ export function createGhosts({ scene, mazeLayout, centerMarkerCell, tileSize, wa
 
     const blueGhost = buildGhost3D(ghostColors.blue, tileSize);
     blueGhost.userData.radius = ghostRadius;
+    blueGhost.userData.baseSpeed = ghostSettings.moveSpeed;
     blueGhost.userData.speed = ghostSettings.moveSpeed;
     blueGhost.userData.direction = { row: 0, column: 1 };
     blueGhost.userData.canTurn = true;
     blueGhost.userData.color = ghostColors.blue;
+    blueGhost.userData.state = 'normal';
     const bluePosition = resolveCellPosition(leftCell, centerX, centerZ);
     blueGhost.position.set(bluePosition.x, ghostHeight, bluePosition.z);
 
     const redGhost = buildGhost3D(ghostColors.red, tileSize);
     redGhost.userData.radius = ghostRadius;
+    redGhost.userData.baseSpeed = ghostSettings.moveSpeed * 1.05;
     redGhost.userData.speed = ghostSettings.moveSpeed * 1.05;
     redGhost.userData.direction = { row: 0, column: -1 };
     redGhost.userData.canTurn = true;
     redGhost.userData.color = ghostColors.red;
+    redGhost.userData.state = 'normal';
     const redPosition = resolveCellPosition(rightCell, centerX, centerZ);
     redGhost.position.set(redPosition.x, ghostHeight, redPosition.z);
 
     const orangeGhost = buildGhost3D(ghostColors.orange, tileSize);
     orangeGhost.userData.radius = ghostRadius;
+    orangeGhost.userData.baseSpeed = ghostSettings.moveSpeed * 0.92;
     orangeGhost.userData.speed = ghostSettings.moveSpeed * 0.92;
     orangeGhost.userData.direction = { row: -1, column: 0 };
     orangeGhost.userData.canTurn = true;
     orangeGhost.userData.color = ghostColors.orange;
+    orangeGhost.userData.state = 'normal';
     const orangePosition = resolveCellPosition(centerCell, centerX, centerZ);
     orangeGhost.position.set(orangePosition.x, ghostHeight, orangePosition.z);
 
     const pinkGhost = buildGhost3D(ghostColors.pink, tileSize);
     pinkGhost.userData.radius = ghostRadius;
+    pinkGhost.userData.baseSpeed = ghostSettings.moveSpeed * 0.98;
     pinkGhost.userData.speed = ghostSettings.moveSpeed * 0.98;
     pinkGhost.userData.direction = { row: 1, column: 0 };
     pinkGhost.userData.canTurn = true;
     pinkGhost.userData.color = ghostColors.pink;
+    pinkGhost.userData.state = 'normal';
     const pinkPosition = resolveCellPosition(upCell, centerX, centerZ);
     pinkGhost.position.set(pinkPosition.x, ghostHeight, pinkPosition.z);
 
@@ -590,14 +678,122 @@ export function createGhosts({ scene, mazeLayout, centerMarkerCell, tileSize, wa
 export function createGhosts2D({ ghosts, tileSize }) {
     return ghosts.map((ghost) => {
         const color = ghost.userData.color ?? ghostColors.blue;
-        return buildGhost2D(color, tileSize);
+        const ghost2d = buildGhost2D(color, tileSize);
+        ghost2d.userData.baseColor = color;
+        ghost2d.userData.state = 'normal';
+        return ghost2d;
     });
 }
 
-export function updateGhosts({ deltaSeconds, ghosts, mazeLayout, tileSize, centerMarkerCell, mode, targetCell }) {
+export function updateGhosts({
+    deltaSeconds,
+    ghosts,
+    mazeLayout,
+    tileSize,
+    centerMarkerCell,
+    mode,
+    targetCell,
+    modeResolver,
+    targetResolver
+}) {
     for (const ghost of ghosts) {
-        tryMoveGhost(ghost, mazeLayout, tileSize, deltaSeconds, centerMarkerCell, mode, targetCell);
+        const resolvedMode = modeResolver ? modeResolver(ghost) : mode;
+        const resolvedTarget = targetResolver ? targetResolver(ghost) : targetCell;
+        tryMoveGhost(ghost, mazeLayout, tileSize, deltaSeconds, centerMarkerCell, resolvedMode, resolvedTarget);
     }
+}
+
+function setGhostMaterialColor(ghost, hexColor) {
+    const material = ghost.userData.bodyMaterial;
+    if (material && material.color) {
+        material.color.setHex(hexColor);
+    }
+}
+
+function setGhostPartsVisibility(ghost, showBody) {
+    const bodyParts = ghost.userData.bodyParts ?? [];
+    const eyeParts = ghost.userData.eyeParts ?? [];
+
+    for (const part of bodyParts) {
+        part.visible = showBody;
+    }
+
+    for (const part of eyeParts) {
+        part.visible = true;
+    }
+}
+
+export function setGhostState(ghost, state) {
+    if (!ghost) {
+        return;
+    }
+
+    const baseSpeed = ghost.userData.baseSpeed ?? ghostSettings.moveSpeed;
+    const baseColor = ghost.userData.color ?? ghostColors.blue;
+
+    if (state === 'eyes') {
+        ghost.userData.speed = baseSpeed * 3;
+        setGhostPartsVisibility(ghost, false);
+    } else if (state === 'scared') {
+        ghost.userData.speed = baseSpeed;
+        setGhostMaterialColor(ghost, ghostFrightenedColor);
+        setGhostPartsVisibility(ghost, true);
+    } else {
+        ghost.userData.speed = baseSpeed;
+        setGhostMaterialColor(ghost, baseColor);
+        setGhostPartsVisibility(ghost, true);
+    }
+
+    ghost.userData.state = state;
+}
+
+export function setGhost2DState(ghost2d, state, baseColor) {
+    if (!ghost2d) {
+        return;
+    }
+
+    const {
+        bodyMaterial,
+        bodyParts = [],
+        eyeParts = [],
+        baseColor: storedBaseColor
+    } = ghost2d.userData;
+    const resolvedBaseColor = baseColor ?? storedBaseColor ?? ghostColors.blue;
+
+    if (state === 'eyes') {
+        for (const part of bodyParts) {
+            part.visible = false;
+        }
+
+        for (const part of eyeParts) {
+            part.visible = true;
+        }
+    } else {
+        const nextColor = state === 'scared' ? ghostFrightenedColor : resolvedBaseColor;
+        if (bodyMaterial && bodyMaterial.color) {
+            bodyMaterial.color.setHex(nextColor);
+        }
+
+        for (const part of bodyParts) {
+            part.visible = true;
+        }
+
+        for (const part of eyeParts) {
+            part.visible = true;
+        }
+    }
+
+    ghost2d.userData.state = state;
+    ghost2d.userData.baseColor = resolvedBaseColor;
+}
+
+export function isGhostInsideCenterBox(ghost, centerMarkerCell, tileSize) {
+    if (!ghost || !centerMarkerCell) {
+        return false;
+    }
+
+    const { row, column } = worldToCell(ghost.position.x, ghost.position.z, tileSize);
+    return isInsideCenterBox(row, column, centerMarkerCell);
 }
 
 export function playerIsTouchingGhosts({ playerX, playerZ, playerRadius, ghosts }) {
@@ -610,11 +806,41 @@ export function createCoins({
     tileSize,
     excludedCells = [],
     centerMarkerCell = null,
-    exclusionRadius = 0
+    exclusionRadius = 0,
+    powerCoinCount = 0
 }) {
     const coinRadius = tileSize * coinSettings.radiusRatio;
     const coinGeometry = new THREE.SphereGeometry(coinRadius, 16, 10);
+    const powerGeometry = (() => {
+        const baseGeometry = new THREE.OctahedronGeometry(coinRadius * 1.05);
+        const geometry = baseGeometry.toNonIndexed();
+        const lightColor = new THREE.Color(0xfff3b4);
+        const darkColor = new THREE.Color(0xc79b3a);
+        const colors = [];
+        const vertexCount = geometry.attributes.position.count;
+
+        for (let i = 0; i < vertexCount; i += 3) {
+            const faceIndex = i / 3;
+            const faceColor = (faceIndex % 2 === 0) ? lightColor : darkColor;
+            for (let v = 0; v < 3; v += 1) {
+                colors.push(faceColor.r, faceColor.g, faceColor.b);
+            }
+        }
+
+        geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+        return geometry;
+    })();
+    const powerGeometry2D = new THREE.PlaneGeometry(coinRadius * 1.9, coinRadius * 1.9);
     const coinMaterial = new THREE.MeshBasicMaterial({ color: 0xfde68a });
+    const powerMaterial3D = new THREE.MeshStandardMaterial({
+        vertexColors: true,
+        roughness: 0.35,
+        metalness: 0.1
+    });
+    const powerMaterial2D = new THREE.MeshBasicMaterial({
+        color: 0xfde68a,
+        side: THREE.DoubleSide
+    });
     const coinGroup = new THREE.Group();
     const excludedCellSet = new Set(excludedCells.map(({ row, column }) => `${row},${column}`));
     const bannedRows = new Set([9, 10, 11, 12, 13]);
@@ -651,9 +877,35 @@ export function createCoins({
             coin.userData.collected = false;
             coin.userData.baseHeight = coinSettings.baseHeight;
             coin.userData.floatOffset = Math.random() * Math.PI * 2;
+            coin.userData.isPower = false;
             coinGroup.add(coin);
             coins.push(coin);
         }
+    }
+
+    const selectable = coins.slice();
+    for (let i = selectable.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(Math.random() * (i + 1));
+        const temp = selectable[i];
+        selectable[i] = selectable[j];
+        selectable[j] = temp;
+    }
+
+    const powerCount = Math.min(powerCoinCount, selectable.length);
+    for (let i = 0; i < powerCount; i += 1) {
+        const coin = selectable[i];
+        coin.userData.isPower = true;
+        coin.geometry = powerGeometry;
+        coin.material = powerMaterial3D;
+        coin.scale.setScalar(2.0);
+        coin.userData.baseHeight = coinSettings.baseHeight + coinRadius * 0.65;
+        coin.position.y = coin.userData.baseHeight;
+        coin.userData.spinSpeed = 1.6 + Math.random() * 0.6;
+        coin.userData.spinOffset = Math.random() * Math.PI * 2;
+        coin.userData.powerGeometry3D = powerGeometry;
+        coin.userData.powerMaterial3D = powerMaterial3D;
+        coin.userData.powerGeometry2D = powerGeometry2D;
+        coin.userData.powerMaterial2D = powerMaterial2D;
     }
 
     scene.add(coinGroup);
@@ -661,7 +913,7 @@ export function createCoins({
     return { coinGroup, coins };
 }
 
-export function updateCoins({ elapsedSeconds, coins }) {
+export function updateCoins({ elapsedSeconds, coins, view = 'perspective' }) {
     for (const coin of coins) {
         if (coin.userData.collected) {
             continue;
@@ -669,12 +921,40 @@ export function updateCoins({ elapsedSeconds, coins }) {
 
         const baseHeight = coin.userData.baseHeight ?? coinSettings.baseHeight;
         const floatOffset = coin.userData.floatOffset ?? 0;
-        coin.position.y = baseHeight + Math.sin(elapsedSeconds * coinSettings.floatSpeed + floatOffset) * coinSettings.floatAmplitude;
+
+        if (coin.userData.isPower) {
+            coin.position.y = baseHeight;
+
+            if (view === 'orthographic') {
+                const { powerGeometry2D, powerMaterial2D } = coin.userData;
+                if (powerGeometry2D && coin.geometry !== powerGeometry2D) {
+                    coin.geometry = powerGeometry2D;
+                }
+                if (powerMaterial2D && coin.material !== powerMaterial2D) {
+                    coin.material = powerMaterial2D;
+                }
+                coin.rotation.set(-Math.PI / 2, 0, Math.PI / 4);
+            } else {
+                const { powerGeometry3D, powerMaterial3D } = coin.userData;
+                if (powerGeometry3D && coin.geometry !== powerGeometry3D) {
+                    coin.geometry = powerGeometry3D;
+                }
+                if (powerMaterial3D && coin.material !== powerMaterial3D) {
+                    coin.material = powerMaterial3D;
+                }
+                const spinSpeed = coin.userData.spinSpeed ?? 1.8;
+                const spinOffset = coin.userData.spinOffset ?? 0;
+                coin.rotation.set(0, elapsedSeconds * spinSpeed + spinOffset, 0);
+            }
+        } else {
+            coin.position.y = baseHeight + Math.sin(elapsedSeconds * coinSettings.floatSpeed + floatOffset) * coinSettings.floatAmplitude;
+        }
     }
 }
 
 export function collectCoins({ playerX, playerZ, playerRadius, coins }) {
     let collectedCount = 0;
+    let powerCollected = 0;
 
     for (const coin of coins) {
         if (coin.userData.collected) {
@@ -690,10 +970,13 @@ export function collectCoins({ playerX, playerZ, playerRadius, coins }) {
             coin.userData.collected = true;
             coin.visible = false;
             collectedCount += 1;
+            if (coin.userData.isPower) {
+                powerCollected += 1;
+            }
         }
     }
 
-    return collectedCount;
+    return { collectedCount, powerCollected };
 }
 
 export function updatePlayer({ deltaSeconds, controls, camera, mazeLayout }) {

@@ -7,8 +7,10 @@ import {
     createGhosts2D,
     createPacmanModels,
     createPlayer,
-    playerIsTouchingGhosts,
     playerSettings,
+    isGhostInsideCenterBox,
+    setGhost2DState,
+    setGhostState,
     updateCoins,
     updateGhosts,
     updatePlayer
@@ -51,6 +53,14 @@ export function startGame() {
     const scoreElement = hudElement.querySelector('#hud-score');
     const stateElement = hudElement.querySelector('#hud-state');
 
+    const powerTimerElement = document.createElement('div');
+    powerTimerElement.className = 'power-timer is-hidden';
+    powerTimerElement.innerHTML = `
+        <span class="power-timer__clock" aria-hidden="true"></span>
+        <span class="power-timer__value">10</span>
+    `;
+    document.body.appendChild(powerTimerElement);
+
     const coinFlipSettings = {
         intervalMs: 30000,
         revealDelayMs: 500,
@@ -61,11 +71,19 @@ export function startGame() {
         maxWeight: 0.99
     };
 
+    const powerModeSettings = {
+        durationMs: 10000,
+        baseGhostPoints: 20
+    };
+
     let ghostMode = 'roam';
     let chaseWeight = 0.5;
     let coinRotation = 0;
     let flipAnimationId = null;
     let flipTimeoutId = null;
+    let powerModeActive = false;
+    let powerModeUntil = 0;
+    let ghostEatStreak = 0;
 
     const coinWrapper = document.createElement('div');
     coinWrapper.style.position = 'fixed';
@@ -169,6 +187,9 @@ export function startGame() {
     }
 
     function startCoinFlipCycle() {
+        if (powerModeActive || gameState !== 'playing') {
+            return;
+        }
         const nextMode = pickGhostMode();
         const finalFace = nextMode === 'chase' ? 0 : 180;
         const targetRotation = finalFace + 720;
@@ -289,10 +310,12 @@ export function startGame() {
         tileSize,
         excludedCells: [spawnCell, ...ghostCells],
         centerMarkerCell,
-        exclusionRadius: 2
+        exclusionRadius: 2,
+        powerCoinCount: 5
     });
 
     let collectedCoinsCount = 0;
+    let totalScore = 0;
     let gameState = 'playing';
 
     let activeCamera = perspectiveCamera;
@@ -306,12 +329,93 @@ export function startGame() {
         scoreElement.textContent = `Pontos: ${value}`;
     }
 
+    function updatePowerTimer(now) {
+        if (!powerModeActive) {
+            return;
+        }
+
+        const remainingMs = Math.max(0, powerModeUntil - now);
+        const remainingSeconds = Math.ceil(remainingMs / 1000);
+        const valueElement = powerTimerElement.querySelector('.power-timer__value');
+        if (valueElement) {
+            valueElement.textContent = String(remainingSeconds);
+        }
+
+        if (remainingMs <= 0) {
+            powerModeActive = false;
+            powerTimerElement.classList.add('is-hidden');
+            ghostEatStreak = 0;
+
+            for (const ghost of ghosts) {
+                if (ghost.userData.state === 'scared') {
+                    setGhostState(ghost, 'normal');
+                }
+            }
+
+            for (const ghost2d of ghost2DModels) {
+                if (ghost2d.userData.state === 'scared') {
+                    const { baseColor } = ghost2d.userData;
+                    setGhost2DState(ghost2d, 'normal', baseColor);
+                }
+            }
+        }
+    }
+
+    function startPowerMode(now) {
+        powerModeActive = true;
+        powerModeUntil = now + powerModeSettings.durationMs;
+        ghostEatStreak = 0;
+        powerTimerElement.classList.remove('is-hidden');
+        coinWrapper.style.display = 'none';
+        if (flipTimeoutId) {
+            clearTimeout(flipTimeoutId);
+            flipTimeoutId = null;
+        }
+        const valueElement = powerTimerElement.querySelector('.power-timer__value');
+        if (valueElement) {
+            valueElement.textContent = String(Math.ceil(powerModeSettings.durationMs / 1000));
+        }
+
+        for (const ghost of ghosts) {
+            if (ghost.userData.state !== 'eyes') {
+                setGhostState(ghost, 'scared');
+            }
+            ghost.userData.canTurn = true;
+            ghost.userData.direction = { row: 0, column: 0 };
+        }
+
+        ghosts.forEach((ghost, index) => {
+            if (ghost.userData.state === 'scared') {
+                const ghost2d = ghost2DModels[index];
+                setGhost2DState(ghost2d, 'scared', ghost.userData.color);
+            }
+        });
+    }
+
+    function getCollidingGhostIndex(playerX, playerZ) {
+        for (let index = 0; index < ghosts.length; index += 1) {
+            const ghost = ghosts[index];
+            const ghostRadius = ghost.userData.radius ?? 0;
+            const dx = playerX - ghost.position.x;
+            const dz = playerZ - ghost.position.z;
+            const minDistance = playerSettings.playerRadius + ghostRadius;
+
+            if (dx * dx + dz * dz <= minDistance * minDistance) {
+                return index;
+            }
+        }
+
+        return -1;
+    }
+
     function endGame(message) {
         gameState = 'finished';
         setHudState(message);
+        powerModeActive = false;
+        powerTimerElement.classList.add('is-hidden');
     }
 
-    setScore(collectedCoinsCount);
+    setScore(totalScore);
     setHudState('Colete as moedas e fuja dos fantasmas.');
 
     function activatePerspectiveView() {
@@ -481,11 +585,13 @@ export function startGame() {
 
     function animate() {
         const deltaSeconds = clock.getDelta();
+        const now = performance.now();
 
         if (gameState === 'playing') {
             updateCoins({
                 elapsedSeconds: clock.elapsedTime,
-                coins
+                coins,
+                view: activeView
             });
 
             updatePlayer({
@@ -497,6 +603,8 @@ export function startGame() {
                 ghosts
             });
 
+            updatePowerTimer(now);
+
             updateGhosts({
                 deltaSeconds,
                 ghosts,
@@ -507,6 +615,27 @@ export function startGame() {
                 targetCell: {
                     row: Math.round(perspectiveCamera.position.z / tileSize),
                     column: Math.round(perspectiveCamera.position.x / tileSize)
+                },
+                modeResolver: (ghost) => {
+                    if (ghost.userData.state === 'eyes') {
+                        return 'return';
+                    }
+
+                    if (powerModeActive) {
+                        return 'flee';
+                    }
+
+                    return ghostMode;
+                },
+                targetResolver: (ghost) => {
+                    if (ghost.userData.state === 'eyes' && centerMarkerCell) {
+                        return centerMarkerCell;
+                    }
+
+                    return {
+                        row: Math.round(perspectiveCamera.position.z / tileSize),
+                        column: Math.round(perspectiveCamera.position.x / tileSize)
+                    };
                 }
             });
 
@@ -516,50 +645,81 @@ export function startGame() {
                 ghost2D.position.x = ghost.position.x;
                 ghost2D.position.z = ghost.position.z;
                 ghost2D.position.y = tileSize * 0.02;
+
+                if (ghost.userData.state === 'eyes' && isGhostInsideCenterBox(ghost, centerMarkerCell, tileSize)) {
+                    setGhostState(ghost, 'normal');
+                    setGhost2DState(ghost2D, 'normal', ghost.userData.color);
+                }
             }
 
-            const playerCaught = playerIsTouchingGhosts({
-                playerX: perspectiveCamera.position.x,
-                playerZ: perspectiveCamera.position.z,
+            const playerX = perspectiveCamera.position.x;
+            const playerZ = perspectiveCamera.position.z;
+            const collidingIndex = getCollidingGhostIndex(playerX, playerZ);
+
+            if (collidingIndex >= 0) {
+                const ghost = ghosts[collidingIndex];
+                if (powerModeActive && ghost.userData.state !== 'eyes') {
+                    setGhostState(ghost, 'eyes');
+                    setGhost2DState(ghost2DModels[collidingIndex], 'eyes', ghost.userData.color);
+                    const bonus = powerModeSettings.baseGhostPoints * Math.pow(2, ghostEatStreak);
+                    ghostEatStreak += 1;
+                    totalScore += bonus;
+                    setScore(totalScore);
+                } else if (ghost.userData.state !== 'eyes') {
+                    endGame('Game over. Um fantasma apanhou o jogador. Pressiona R para reiniciar.');
+                }
+            }
+
+            const coinResult = collectCoins({
+                playerX,
+                playerZ,
                 playerRadius: playerSettings.playerRadius,
-                ghosts
+                coins
             });
 
-            if (playerCaught) {
-                endGame('Game over. Um fantasma apanhou o jogador. Pressiona R para reiniciar.');
-            } else {
-                const newlyCollected = collectCoins({
-                    playerX: perspectiveCamera.position.x,
-                    playerZ: perspectiveCamera.position.z,
-                    playerRadius: playerSettings.playerRadius,
-                    coins
-                });
+            if (coinResult.collectedCount > 0) {
+                collectedCoinsCount += coinResult.collectedCount;
+                totalScore += coinResult.collectedCount;
+                setScore(totalScore);
+            }
 
-                if (newlyCollected > 0) {
-                    collectedCoinsCount += newlyCollected;
-                    setScore(collectedCoinsCount);
-                }
+            if (coinResult.powerCollected > 0) {
+                startPowerMode(now);
+            }
 
-                if (collectedCoinsCount >= coins.length) {
-                    endGame('Venceste. Todas as moedas foram apanhadas. Pressiona R para reiniciar.');
-                }
+            if (collectedCoinsCount >= coins.length) {
+                endGame('Venceste. Todas as moedas foram apanhadas. Pressiona R para reiniciar.');
             }
         }
 
         if (activeView === 'orthographic') {
-            orthographicCamera.position.y = orthographicCameraHeight;
+            orthographicCamera.position.set(
+                orthographicCamera.position.x,
+                orthographicCameraHeight,
+                orthographicCamera.position.z
+            );
             orthographicCamera.lookAt(mazeCenterX, 0, mazeCenterZ);
         }
 
-        playerSpotlight.position.x = perspectiveCamera.position.x;
-        playerSpotlight.position.z = perspectiveCamera.position.z;
+        playerSpotlight.position.set(
+            perspectiveCamera.position.x,
+            playerSpotlight.position.y,
+            perspectiveCamera.position.z
+        );
 
-        pacman3D.position.x = perspectiveCamera.position.x;
-        pacman3D.position.z = perspectiveCamera.position.z;
-        pacman3D.position.y = pacman3D.userData.baseY ?? playerSettings.playerEyeHeight;
-        pacman2D.position.x = perspectiveCamera.position.x;
-        pacman2D.position.z = perspectiveCamera.position.z;
-        pacman2D.position.y = pacman2D.userData.baseY ?? tileSize * 0.06;
+        const pacman3DHeight = pacman3D.userData.baseY ?? playerSettings.playerEyeHeight;
+        pacman3D.position.set(
+            perspectiveCamera.position.x,
+            pacman3DHeight,
+            perspectiveCamera.position.z
+        );
+
+        const pacman2DHeight = pacman2D.userData.baseY ?? tileSize * 0.06;
+        pacman2D.position.set(
+            perspectiveCamera.position.x,
+            pacman2DHeight,
+            perspectiveCamera.position.z
+        );
 
         renderer.render(scene, activeCamera);
         requestAnimationFrame(animate);
