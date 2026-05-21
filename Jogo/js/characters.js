@@ -13,7 +13,7 @@ export const ghostSettings = {
     spacingUnits: 2,
     moveSpeed: 1.15,
     collisionPadding: 0.03,
-    faceTurnSpeed: 5.0
+    faceTurnSpeed: 7.0
 };
 
 export const coinSettings = {

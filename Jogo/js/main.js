@@ -40,18 +40,8 @@ export function startGame() {
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     appElement.appendChild(renderer.domElement);
 
-    const hudElement = document.createElement('div');
-    hudElement.className = 'overlay';
-    hudElement.innerHTML = `
-        <h1>Pacman 3D</h1>
-        <p id="hud-score">Pontos: 0</p>
-        <p id="hud-state">Colete as moedas e fuja dos fantasmas.</p>
-        <span class="hint">WASD move | Mouse olha | Espaço alterna vista | R reinicia</span>
-    `;
-    document.body.appendChild(hudElement);
-
-    const scoreElement = hudElement.querySelector('#hud-score');
-    const stateElement = hudElement.querySelector('#hud-state');
+    const scoreElement = null;
+    const stateElement = null;
 
     const powerTimerElement = document.createElement('div');
     powerTimerElement.className = 'power-timer is-hidden';
@@ -322,10 +312,16 @@ export function startGame() {
     let activeView = 'perspective';
 
     function setHudState(message) {
+        if (!stateElement) {
+            return;
+        }
         stateElement.textContent = message;
     }
 
     function setScore(value) {
+        if (!scoreElement) {
+            return;
+        }
         scoreElement.textContent = `Pontos: ${value}`;
     }
 
