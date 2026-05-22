@@ -9,6 +9,7 @@ const cardinalDirections = [
 
 let centerMarkerCell = null;
 let frontMarkerCell = null;
+let spawnMarkerCell = null;
 
 function createFilledGrid(rows, columns, fillValue) {
     return Array.from({ length: rows }, () => Array.from({ length: columns }, () => fillValue));
@@ -50,7 +51,7 @@ function createPacmanDarkDeceptionLayout(rows, columns) {
     carveHorizontal(layout, 10, 10, 16);
     carveHorizontal(layout, 11, 9, 17);
     carveHorizontal(layout, 12, 10, 16);
-    carveVertical(layout, 9, 10, 12);
+        ceiling.position.set(mazeCenterX, wallHeight + 0.02, mazeCenterZ);
     carveVertical(layout, 17, 10, 12);
 
     const tacticalBlockers = [
@@ -84,7 +85,7 @@ function createSymmetricMazeLayout(rows, columns) {
         '###.#####.###.#.###.#####.###...#',
         '#...#...#...........#...#...#...#',
         '#.###.#.###.##P##.###.#.###.#.###',
-        '#.....#.....#.C.#.....#.........#',
+        '#S....#.....#.C.#.....#.........#',
         '#.###.#.###.#####.###.#.###.#...#',
         '#...#...#...........#...#...#...#',
         '###.#####.###.#.###.#####.###.#.#',
@@ -101,11 +102,13 @@ function createSymmetricMazeLayout(rows, columns) {
     if (rows !== blueprint.length || columns !== blueprint[0].length) {
         centerMarkerCell = null;
         frontMarkerCell = null;
+        spawnMarkerCell = null;
         return createPacmanDarkDeceptionLayout(rows, columns);
     }
 
     centerMarkerCell = null;
     frontMarkerCell = null;
+    spawnMarkerCell = null;
 
     return blueprint.map((row, rowIndex) => Array.from(row, (cell, columnIndex) => {
         if (cell === 'C') {
@@ -115,6 +118,11 @@ function createSymmetricMazeLayout(rows, columns) {
 
         if (cell === 'P') {
             frontMarkerCell = { row: rowIndex, column: columnIndex };
+            return 0;
+        }
+
+        if (cell === 'S') {
+            spawnMarkerCell = { row: rowIndex, column: columnIndex };
             return 0;
         }
 
@@ -220,6 +228,10 @@ function buildPlayableMaze(layout) {
 }
 
 export function findSpawnCell(layout) {
+    if (spawnMarkerCell && layout[spawnMarkerCell.row]?.[spawnMarkerCell.column] === 0) {
+        return spawnMarkerCell;
+    }
+
     const preferredSpawn = { row: layout.length - 4, column: Math.floor(layout[0].length / 2) };
 
     if (layout[preferredSpawn.row][preferredSpawn.column] === 0) {
@@ -323,7 +335,7 @@ export function createMaze({
         ceilingMaterial
     );
     ceiling.rotation.x = Math.PI / 2;
-    ceiling.position.set(mazeCenterX, wallHeight + 0.15, mazeCenterZ);
+    ceiling.position.set(mazeCenterX, wallHeight + 0.02, mazeCenterZ);
     scene.add(ceiling);
 
     const wallGeometry = new THREE.BoxGeometry(tileSize, wallHeight, tileSize);

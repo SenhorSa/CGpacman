@@ -25,55 +25,67 @@ function createWallTexture(size = 256) {
         return null;
     }
 
-    ctx.fillStyle = '#6b6257';
+    ctx.fillStyle = '#890509';
     ctx.fillRect(0, 0, size, size);
 
     const gradient = ctx.createLinearGradient(0, 0, 0, size);
-    gradient.addColorStop(0, 'rgba(255, 255, 255, 0.08)');
-    gradient.addColorStop(1, 'rgba(0, 0, 0, 0.18)');
+    gradient.addColorStop(0, 'rgba(255, 255, 255, 0.06)');
+    gradient.addColorStop(1, 'rgba(0, 0, 0, 0.22)');
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, size, size);
 
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.06)';
-    for (let y = 0; y < size; y += 10) {
+    const panelCount = 5;
+    const panelWidth = Math.ceil(size / panelCount);
+    for (let i = 0; i < panelCount; i += 1) {
+        const x = i * panelWidth;
+        ctx.fillStyle = `rgba(255, 255, 255, ${0.04 + Math.random() * 0.05})`;
+        ctx.fillRect(x + 2, 0, panelWidth - 4, size);
+
+        ctx.fillStyle = 'rgba(28, 22, 18, 0.55)';
+        ctx.fillRect(x, 0, 2, size);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+        ctx.fillRect(x + panelWidth - 2, 0, 2, size);
+    }
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
+    for (let y = 0; y < size; y += 12) {
         ctx.fillRect(0, y, size, 1);
     }
 
-    ctx.strokeStyle = 'rgba(74, 64, 52, 0.55)';
-    ctx.lineWidth = 1;
-    const seamCount = 4;
-    for (let i = 1; i < seamCount; i += 1) {
-        const x = Math.round((size / seamCount) * i + (Math.random() * 10 - 5));
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, size);
-        ctx.stroke();
-    }
-
-    ctx.fillStyle = 'rgba(45, 40, 33, 0.35)';
-    for (let i = 0; i < 18; i += 1) {
+    ctx.fillStyle = 'rgba(53, 45, 36, 0.45)';
+    for (let i = 0; i < 20; i += 1) {
         const stainX = Math.random() * size;
         const stainY = Math.random() * size;
-        const stainRadius = 12 + Math.random() * 28;
+        const stainRadius = 10 + Math.random() * 26;
         ctx.beginPath();
-        ctx.ellipse(stainX, stainY, stainRadius, stainRadius * 0.7, 0, 0, Math.PI * 2);
+        ctx.ellipse(stainX, stainY, stainRadius, stainRadius * 0.65, 0, 0, Math.PI * 2);
         ctx.fill();
     }
 
-    ctx.strokeStyle = 'rgba(35, 30, 24, 0.6)';
+    ctx.fillStyle = 'rgba(62, 79, 60, 0.32)';
+    for (let i = 0; i < 14; i += 1) {
+        const moldX = Math.random() * size;
+        const moldY = Math.random() * size;
+        const moldRadius = 6 + Math.random() * 18;
+        ctx.beginPath();
+        ctx.ellipse(moldX, moldY, moldRadius, moldRadius * 0.8, 0, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    ctx.strokeStyle = 'rgba(27, 22, 18, 0.6)';
     ctx.lineWidth = 1;
-    for (let i = 0; i < 8; i += 1) {
+    for (let i = 0; i < 10; i += 1) {
         const startX = Math.random() * size;
         const startY = Math.random() * size;
         ctx.beginPath();
         ctx.moveTo(startX, startY);
-        ctx.lineTo(startX + Math.random() * 40 - 20, startY + Math.random() * 40 - 20);
+        ctx.lineTo(startX + Math.random() * 50 - 25, startY + Math.random() * 40 - 20);
         ctx.stroke();
     }
 
     const imageData = ctx.getImageData(0, 0, size, size);
     for (let i = 0; i < imageData.data.length; i += 4) {
-        const noise = (Math.random() - 0.5) * 26;
+        const noise = (Math.random() - 0.5) * 30;
         imageData.data[i] = Math.max(0, Math.min(255, imageData.data[i] + noise));
         imageData.data[i + 1] = Math.max(0, Math.min(255, imageData.data[i + 1] + noise));
         imageData.data[i + 2] = Math.max(0, Math.min(255, imageData.data[i + 2] + noise));
@@ -86,6 +98,105 @@ function createWallTexture(size = 256) {
     texture.repeat.set(2, 1);
     texture.anisotropy = 4;
     return texture;
+}
+
+function createCarpetFloorTexture(size = 512) {
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+        return null;
+    }
+
+    ctx.fillStyle = '#bb8f29';
+    ctx.fillRect(0, 0, size, size);
+
+    const hexRadius = size / 12;
+    const hexHeight = Math.sqrt(3) * hexRadius;
+    const stepX = hexRadius * 1.5;
+    const stepY = hexHeight;
+    const innerRadius = hexRadius * 0.62;
+    const coreRadius = hexRadius * 0.35;
+
+    const drawHex = (cx, cy, radius, strokeStyle, lineWidth) => {
+        ctx.strokeStyle = strokeStyle;
+        ctx.lineWidth = lineWidth;
+        ctx.beginPath();
+        for (let i = 0; i < 6; i += 1) {
+            const angle = Math.PI / 6 + i * (Math.PI / 3);
+            const x = cx + Math.cos(angle) * radius;
+            const y = cy + Math.sin(angle) * radius;
+            if (i === 0) {
+                ctx.moveTo(x, y);
+            } else {
+                ctx.lineTo(x, y);
+            }
+        }
+        ctx.closePath();
+        ctx.stroke();
+    };
+
+    for (let col = -2; col < size / stepX + 2; col += 1) {
+        const x = col * stepX;
+        const offsetY = col % 2 === 0 ? 0 : stepY / 2;
+        for (let row = -2; row < size / stepY + 2; row += 1) {
+            const y = row * stepY + offsetY;
+            const centerX = x + hexRadius;
+            const centerY = y + hexHeight / 2;
+            if (centerX < -hexRadius || centerX > size + hexRadius || centerY < -hexHeight || centerY > size + hexHeight) {
+                continue;
+            }
+
+            drawHex(centerX, centerY, hexRadius, 'rgba(94, 66, 28, 0.55)', 2);
+            drawHex(centerX, centerY, innerRadius, 'rgba(255, 255, 255, 0.18)', 1);
+            drawHex(centerX, centerY, coreRadius, 'rgba(94, 66, 28, 0.35)', 1);
+        }
+    }
+
+    const imageData = ctx.getImageData(0, 0, size, size);
+    for (let i = 0; i < imageData.data.length; i += 4) {
+        const noise = (Math.random() - 0.5) * 18;
+        imageData.data[i] = Math.max(0, Math.min(255, imageData.data[i] + noise));
+        imageData.data[i + 1] = Math.max(0, Math.min(255, imageData.data[i + 1] + noise));
+        imageData.data[i + 2] = Math.max(0, Math.min(255, imageData.data[i + 2] + noise));
+    }
+    ctx.putImageData(imageData, 0, 0);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(3, 3);
+    texture.anisotropy = 4;
+    texture.userData.hex = {
+        size,
+        centerU: hexRadius / size,
+        centerV: (hexHeight * 0.5) / size
+    };
+    return texture;
+}
+
+function alignCarpetTextureToGrid(texture, mazeWidth, mazeHeight, tileSize, targetCell) {
+    if (!texture?.userData?.hex) {
+        return;
+    }
+
+    const { centerU, centerV } = texture.userData.hex;
+    const repeatX = texture.repeat?.x ?? 1;
+    const repeatY = texture.repeat?.y ?? 1;
+    const width = mazeWidth * tileSize;
+    const height = mazeHeight * tileSize;
+    const targetX = Number.isFinite(targetCell?.column) ? targetCell.column * tileSize : 0;
+    const targetZ = Number.isFinite(targetCell?.row) ? targetCell.row * tileSize : 0;
+    const u = (targetX + tileSize * 0.5) / width;
+    const v = (targetZ + tileSize * 0.5) / height;
+    const rawU = (u * repeatX) % 1;
+    const rawV = (v * repeatY) % 1;
+    const offsetU = (centerU - rawU + 1) % 1;
+    const offsetV = (centerV - rawV + 1) % 1;
+
+    texture.offset.set(offsetU, offsetV);
+    texture.needsUpdate = true;
 }
 
 let gameStarted = false;
@@ -340,19 +451,20 @@ export function startGame() {
         polygonOffsetFactor: -2,
         polygonOffsetUnits: -2
     });
-    const floorTexture = new THREE.TextureLoader().load('./Imagens/Ambiente/textura_chao.png');
-    floorTexture.wrapS = THREE.RepeatWrapping;
-    floorTexture.wrapT = THREE.RepeatWrapping;
-    floorTexture.repeat.set(4, 4);
-    floorTexture.anisotropy = 4;
+    const floorTexture = createCarpetFloorTexture(512);
     const floorMaterialPerspective = new THREE.MeshStandardMaterial({
         color: 0xffffff,
         roughness: 0.9,
         metalness: 0.0,
-        map: floorTexture
+        map: floorTexture ?? null
     });
     const floorMaterialOrthographic = new THREE.MeshBasicMaterial({ color: 0x111827, toneMapped: false });
-    const ceilingMaterial = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 1.0, metalness: 0.0, side: THREE.BackSide });
+    const ceilingMaterial = new THREE.MeshStandardMaterial({
+        color: 0xfcd781,
+        roughness: 0.9,
+        metalness: 0.0,
+        side: THREE.DoubleSide
+    });
     const borderGuideMaterial = new THREE.LineBasicMaterial({ color: 0xe5e7eb });
 
     const { mazeLayout, mazeGroup, floor, ceiling } = createMaze({
@@ -371,6 +483,8 @@ export function startGame() {
 
     const { mazeWidth, mazeHeight, mazeCenterX, mazeCenterZ } = getMazeData(mazeLayout, tileSize);
     const centerMarkerCell = getCenterMarkerCell();
+
+    alignCarpetTextureToGrid(floorTexture, mazeWidth, mazeHeight, tileSize, centerMarkerCell);
 
     const playerSpotlight = new THREE.Mesh(
         new THREE.CircleGeometry(0.18, 24),

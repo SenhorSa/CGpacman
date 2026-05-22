@@ -643,13 +643,13 @@ export function createPlayer({ camera, mazeLayout, tileSize }) {
     );
     camera.rotation.order = 'YXZ';
 
-    const targetCell = { row: 1, column: 0 };
+    const targetCell = { row: spawnCell.row, column: 0 };
     const targetX = targetCell.column * tileSize;
     const targetZ = targetCell.row * tileSize;
     const dirX = targetX - camera.position.x;
     const dirZ = targetZ - camera.position.z;
     if (dirX !== 0 || dirZ !== 0) {
-        controls.yaw = Math.atan2(-dirX, -dirZ);
+        controls.yaw = Math.atan2(dirX, -dirZ);
         camera.rotation.y = controls.yaw;
     }
 
