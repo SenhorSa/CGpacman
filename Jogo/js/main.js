@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { createMaze, getCenterMarkerCell, getMazeData } from './maze.js';
+import { bindLightNumberKeys, registerLight } from './lights.js';
 import {
     collectCoins,
     createCoins,
@@ -216,6 +217,8 @@ export function startGame() {
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x0e1116);
 
+    bindLightNumberKeys();
+
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(window.innerWidth, window.innerHeight);
@@ -420,10 +423,10 @@ export function startGame() {
     const tileSize = 1;
     const wallHeight = 1;
 
-    const ambientLight = new THREE.AmbientLight(0xffffff, 1.1);
+    const ambientLight = registerLight('gameAmbient', new THREE.AmbientLight(0xffffff, 1.1));
     scene.add(ambientLight);
 
-    const mainLight = new THREE.DirectionalLight(0xffffff, 2.2);
+    const mainLight = registerLight('gameDirectional', new THREE.DirectionalLight(0xffffff, 2.2));
     mainLight.position.set(8, 12, 6);
     mainLight.castShadow = true;
     mainLight.shadow.mapSize.set(2048, 2048);

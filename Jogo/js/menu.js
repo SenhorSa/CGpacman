@@ -7,6 +7,7 @@ import {
 	updateGhosts
 } from './characters.js';
 import { createMaze, getCenterMarkerCell, getMazeData } from './maze.js';
+import { bindLightNumberKeys, registerLight } from './lights.js';
 
 function createWallTexture(size = 256) {
 	const canvas = document.createElement('canvas');
@@ -256,6 +257,8 @@ function setupMenuMazeBackground() {
 		return;
 	}
 
+	bindLightNumberKeys();
+
 	const canvases = [mazeCanvasA, mazeCanvasB];
 	const renderers = canvases.map((canvas) => new THREE.WebGLRenderer({
 		canvas,
@@ -274,9 +277,9 @@ function setupMenuMazeBackground() {
 		renderer.outputColorSpace = THREE.SRGBColorSpace;
 	}
 
-	const ambientLight = new THREE.AmbientLight(0xffffff, 0.9);
+	const ambientLight = registerLight('menuAmbient', new THREE.AmbientLight(0xffffff, 0.9));
 	scene.add(ambientLight);
-	const keyLight = new THREE.DirectionalLight(0xffffff, 0.9);
+	const keyLight = registerLight('menuDirectional', new THREE.DirectionalLight(0xffffff, 0.9));
 	keyLight.position.set(6, 10, 4);
 	scene.add(keyLight);
 
