@@ -200,6 +200,101 @@ function alignCarpetTextureToGrid(texture, mazeWidth, mazeHeight, tileSize, targ
     texture.needsUpdate = true;
 }
 
+let wallLampAssets = null;
+
+function getWallLampAssets(tileSize) {
+    if (wallLampAssets && wallLampAssets.tileSize === tileSize) {
+        return wallLampAssets;
+    }
+
+    wallLampAssets = {
+        tileSize,
+        baseGeometry: new THREE.BoxGeometry(tileSize * 0.18, tileSize * 0.22, tileSize * 0.06),
+        shadeGeometry: new THREE.CylinderGeometry(tileSize * 0.05, tileSize * 0.07, tileSize * 0.12, 8, 1, true),
+        bulbGeometry: new THREE.SphereGeometry(tileSize * 0.04, 8, 6),
+        baseMaterial: new THREE.MeshStandardMaterial({ color: 0x5b3d1a, roughness: 0.7, metalness: 0.05 }),
+        shadeMaterial: new THREE.MeshStandardMaterial({ color: 0xdec48a, roughness: 0.8, metalness: 0.0, side: THREE.DoubleSide }),
+        bulbMaterial: new THREE.MeshStandardMaterial({ color: 0xfff1c1, emissive: 0xffd57a, emissiveIntensity: 0.6 })
+    };
+
+    return wallLampAssets;
+}
+
+function createWallLamp(tileSize) {
+    const assets = getWallLampAssets(tileSize);
+    const group = new THREE.Group();
+
+    const base = new THREE.Mesh(assets.baseGeometry, assets.baseMaterial);
+    base.position.z = tileSize * 0.03;
+
+    const shade = new THREE.Mesh(assets.shadeGeometry, assets.shadeMaterial);
+    shade.position.z = tileSize * 0.08;
+
+    const bulb = new THREE.Mesh(assets.bulbGeometry, assets.bulbMaterial);
+    bulb.position.z = tileSize * 0.11;
+
+    const light = new THREE.PointLight(0xffd9a8, 1.1, tileSize * 3, 2);
+    light.position.set(0, 0, tileSize * 0.12);
+
+    group.add(base, shade, bulb, light);
+    return { group, light };
+}
+
+function placeManualWallLamps({ mazeLayout, tileSize, wallHeight, targetGroup, placements }) {
+    if (!mazeLayout || !targetGroup || !Array.isArray(placements)) {
+        return;
+    }
+
+    const rows = mazeLayout.length;
+    const columns = mazeLayout[0]?.length ?? 0;
+    const wallDefs = {
+        north: { dr: -1, dc: 0, normalX: 0, normalZ: -1, rotationY: 0 },
+        south: { dr: 1, dc: 0, normalX: 0, normalZ: 1, rotationY: Math.PI },
+        west: { dr: 0, dc: -1, normalX: -1, normalZ: 0, rotationY: Math.PI / 2 },
+        east: { dr: 0, dc: 1, normalX: 1, normalZ: 0, rotationY: -Math.PI / 2 }
+    };
+    const usedKeys = new Set();
+
+    const isWall = (row, column) => (
+        row >= 0
+        && row < rows
+        && column >= 0
+        && column < columns
+        && mazeLayout[row][column] === 1
+    );
+
+    for (const placement of placements) {
+        const row = placement.row;
+        const column = placement.column;
+        const wallKey = String(placement.wall ?? '').trim().toLowerCase();
+        const wallDef = wallDefs[wallKey];
+        if (!wallDef || !Number.isInteger(row) || !Number.isInteger(column)) {
+            continue;
+        }
+
+        const key = `${row},${column},${wallKey}`;
+        if (usedKeys.has(key)) {
+            continue;
+        }
+        usedKeys.add(key);
+
+        const wallRow = row + wallDef.dr;
+        const wallCol = column + wallDef.dc;
+        if (!isWall(wallRow, wallCol)) {
+            console.warn('Skipped lamp with no wall neighbor:', { row, column, wall: wallKey });
+            continue;
+        }
+
+        const { group } = createWallLamp(tileSize);
+        const offset = tileSize * 0.5 - tileSize * 0.08;
+        const x = column * tileSize + wallDef.normalX * offset;
+        const z = row * tileSize + wallDef.normalZ * offset;
+        group.position.set(x, wallHeight * 0.72, z);
+        group.rotation.y = wallDef.rotationY;
+        targetGroup.add(group);
+    }
+}
+
 let gameStarted = false;
 
 export function startGame() {
@@ -470,6 +565,9 @@ export function startGame() {
     });
     const borderGuideMaterial = new THREE.LineBasicMaterial({ color: 0xe5e7eb });
 
+    const pointLightGroup = registerLight('gamePointLights', new THREE.Group());
+    scene.add(pointLightGroup);
+
     const { mazeLayout, mazeGroup, floor, ceiling } = createMaze({
         scene,
         tileSize,
@@ -488,6 +586,74 @@ export function startGame() {
     const centerMarkerCell = getCenterMarkerCell();
 
     alignCarpetTextureToGrid(floorTexture, mazeWidth, mazeHeight, tileSize, centerMarkerCell);
+    placeManualWallLamps({
+        mazeLayout,
+        tileSize,
+        wallHeight,
+        targetGroup: pointLightGroup,
+        placements: [
+            { row: 1, column: 3, wall: 'south' },
+            { row: 1, column: 9, wall: 'north' },
+            { row: 1, column: 20, wall: 'north' },
+            { row: 1, column: 26, wall: 'north' },
+            { row: 1, column: 30, wall: 'north' },
+            { row: 2, column: 11, wall: 'east' },
+            { row: 2, column: 17, wall: 'west' },
+            { row: 2, column: 23, wall: 'west' },
+            { row: 3, column: 7, wall: 'west' },
+            { row: 3, column: 13, wall: 'east' },
+            { row: 3, column: 15, wall: 'west' },
+            { row: 4, column: 1, wall: 'east' },
+            { row: 4, column: 3, wall: 'east' },
+            { row: 4, column: 9, wall: 'west' },
+            { row: 4, column: 19, wall: 'east' },
+            { row: 4, column: 29, wall: 'west' },
+            { row: 4, column: 31, wall: 'east' },
+            { row: 5, column: 22, wall: 'north' },
+            { row: 5, column: 25, wall: 'east' },
+            { row: 5, column: 27, wall: 'west' },
+            { row: 7, column: 7, wall: 'north' },
+            { row: 7, column: 12, wall: 'north' },
+            { row: 7, column: 16, wall: 'north' },
+            { row: 7, column: 21, wall: 'north' },
+            { row: 9, column: 13, wall: 'south' },
+            { row: 9, column: 15, wall: 'south' },
+            { row: 9, column: 26, wall: 'north' },
+            { row: 9, column: 30, wall: 'south' },
+            { row: 10, column: 1, wall: 'east' },
+            { row: 11, column: 5, wall: 'east' },
+            { row: 11, column: 7, wall: 'west' },
+            { row: 11, column: 11, wall: 'east' },
+            { row: 11, column: 17, wall: 'west' },
+            { row: 11, column: 21, wall: 'east' },
+            { row: 11, column: 23, wall: 'west' },
+            { row: 11, column: 30, wall: 'north' },
+            { row: 12, column: 1, wall: 'east' },
+            { row: 13, column: 14, wall: 'north' },
+            { row: 14, column: 13, wall: 'east' },
+            { row: 14, column: 15, wall: 'west' },
+            { row: 14, column: 25, wall: 'west' },
+            { row: 15, column: 1, wall: 'north' },
+            { row: 15, column: 9, wall: 'east' },
+            { row: 15, column: 20, wall: 'north' },
+            { row: 15, column: 28, wall: 'south' },
+            { row: 16, column: 31, wall: 'east' },
+            { row: 17, column: 5, wall: 'west' },
+            { row: 17, column: 10, wall: 'south' },
+            { row: 17, column: 26, wall: 'north' },
+            { row: 19, column: 4, wall: 'north' },
+            { row: 19, column: 15, wall: 'east' },
+            { row: 19, column: 17, wall: 'west' },
+            { row: 19, column: 21, wall: 'east' },
+            { row: 19, column: 23, wall: 'west' },
+            { row: 19, column: 29, wall: 'west' },
+            { row: 20, column: 11, wall: 'east' },
+            { row: 21, column: 1, wall: 'west' },
+            { row: 21, column: 7, wall: 'south' },
+            { row: 21, column: 13, wall: 'west' },
+            { row: 21, column: 27, wall: 'south' }
+        ]
+    });
 
     const playerSpotlight = new THREE.Mesh(
         new THREE.CircleGeometry(0.18, 24),
@@ -832,12 +998,6 @@ export function startGame() {
                 break;
             case 'KeyD':
                 controls.right = true;
-                break;
-            case 'Digit1':
-                activatePerspectiveView();
-                break;
-            case 'Digit2':
-                activateOrthographicView();
                 break;
             case 'Space':
                 event.preventDefault();

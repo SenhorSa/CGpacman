@@ -4,6 +4,7 @@ let numberKeysBound = false;
 const fixedOrder = [
     'gameAmbient',
     'gameDirectional',
+    'gamePointLights',
     'menuAmbient',
     'menuDirectional'
 ];

@@ -59,7 +59,7 @@ function isInsideGrid(layout, row, column) {
 }
 
 function worldToCell(worldX, worldZ, tileSize) {
-    return {
+    return {    
         row: Math.round(worldZ / tileSize),
         column: Math.round(worldX / tileSize)
     };
