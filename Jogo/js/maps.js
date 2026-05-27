@@ -197,30 +197,35 @@ export function createMetalFloorTexture(size = 512) {
 
 export function createFenceWallMaterial() {
     const material = new THREE.MeshStandardMaterial({
-        color: 0x2a2a32,
-        roughness: 0.4,
-        metalness: 0.55,
+        color: 0x1e1e24,
+        roughness: 0.35,
+        metalness: 0.65,
         transparent: true,
-        alphaTest: 0.15,
-        side: THREE.DoubleSide
+        alphaTest: 0.45,
+        side: THREE.FrontSide,
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+        polygonOffsetUnits: -1
     });
 
-    new THREE.TextureLoader().load('./Imagens/Mapas/Labirinto/fence_textura.png', (tex) => {
+    new THREE.TextureLoader().load('.\\Imagens\\Mapas\\Labirinto\\fence_textura.png', (tex) => {
         const img = tex.image;
-        const sz = Math.max(img.width || 512, img.height || 512);
+        const sw = img.width  || 512;
+        const sh = img.height || 512;
         const canvas = document.createElement('canvas');
-        canvas.width = sz;
-        canvas.height = sz;
+        canvas.width  = sw;
+        canvas.height = sh;
         const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, sz, sz);
-        const id = ctx.getImageData(0, 0, sz, sz);
+        ctx.drawImage(img, 0, 0, sw, sh);
+        const id = ctx.getImageData(0, 0, sw, sh);
         const d = id.data;
         for (let i = 0; i < d.length; i += 4) {
             const luma = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
-            const isFence = luma < 110;
-            d[i]     = isFence ? 30  : 180;
-            d[i + 1] = isFence ? 28  : 180;
-            d[i + 2] = isFence ? 34  : 180;
+            // dark pixels = iron bar → opaque steel; light pixels = gap → transparent
+            const isFence = luma < 120;
+            d[i]     = isFence ? 38  : 200;
+            d[i + 1] = isFence ? 36  : 200;
+            d[i + 2] = isFence ? 42  : 200;
             d[i + 3] = isFence ? 255 : 0;
         }
         ctx.putImageData(id, 0, 0);
@@ -228,7 +233,7 @@ export function createFenceWallMaterial() {
         processed.wrapS = THREE.RepeatWrapping;
         processed.wrapT = THREE.RepeatWrapping;
         processed.repeat.set(1, 1);
-        processed.anisotropy = 4;
+        processed.anisotropy = 8;
         material.map = processed;
         material.needsUpdate = true;
     });
@@ -243,14 +248,21 @@ export function buildMansionEnvironment(scene, mazeCenterX, mazeCenterZ, mazeWid
     const cx = mazeCenterX;
     const cz = -7;
 
-    const matWall = new THREE.MeshStandardMaterial({ color: 0x272b35, roughness: 0.9, metalness: 0.05 });
-    const matRoof = new THREE.MeshStandardMaterial({ color: 0x13161d, roughness: 0.95, metalness: 0.0 });
+    const matWall = new THREE.MeshStandardMaterial({ color: 0x2e323e, roughness: 0.88, metalness: 0.06 });
+    const matRoof = new THREE.MeshStandardMaterial({ color: 0x11141a, roughness: 0.95, metalness: 0.0 });
     const matWin  = new THREE.MeshStandardMaterial({
-        color: 0xff7a10, emissive: 0xff4800, emissiveIntensity: 1.6, roughness: 0.15, metalness: 0.0
+        color: 0xff8c20,
+        emissive: 0xff5500,
+        emissiveIntensity: 2.0,
+        roughness: 0.1,
+        metalness: 0.0,
+        polygonOffset: true,
+        polygonOffsetFactor: -2,
+        polygonOffsetUnits: -2
     });
-    const matTrim = new THREE.MeshStandardMaterial({ color: 0x1b1e27, roughness: 0.8, metalness: 0.12 });
-    const matGround = new THREE.MeshStandardMaterial({ color: 0x192e0b, roughness: 1.0 });
-    const matPath   = new THREE.MeshStandardMaterial({ color: 0x38312a, roughness: 0.92 });
+    const matTrim   = new THREE.MeshStandardMaterial({ color: 0x1a1d26, roughness: 0.8, metalness: 0.14 });
+    const matGround = new THREE.MeshStandardMaterial({ color: 0x162809, roughness: 1.0 });
+    const matPath   = new THREE.MeshStandardMaterial({ color: 0x332d25, roughness: 0.92 });
 
     const p = (geo, mat, x, y, z) => {
         const mesh = new THREE.Mesh(geo, mat);
@@ -395,6 +407,123 @@ export function buildMansionEnvironment(scene, mazeCenterX, mazeCenterZ, mazeWid
     pathMesh.rotation.x = -Math.PI / 2;
     pathMesh.position.set(cx, 0.008, cz + 7.25);
     scene.add(pathMesh);
+
+    return group;
+}
+
+export function buildLabyrinthFence(scene, mazeRows, mazeColumns, tileSize, wallHeight) {
+    const group = new THREE.Group();
+    scene.add(group);
+
+    const ironMat  = new THREE.MeshStandardMaterial({ color: 0x252830, roughness: 0.50, metalness: 0.75 });
+    const stoneMat = new THREE.MeshStandardMaterial({ color: 0x52576e, roughness: 0.88, metalness: 0.04 });
+    const backMat  = new THREE.MeshStandardMaterial({
+        color: 0x1e2028, roughness: 0.80, metalness: 0.20,
+        side: THREE.FrontSide,
+        polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 2
+    });
+
+    const W = tileSize;
+    const H = wallHeight;
+
+    const barR      = W * 0.030;
+    const barH      = H * 0.84;
+    const tipR      = W * 0.042;
+    const tipH      = H * 0.22;
+    const rThick    = W * 0.048;
+    const rDepth    = W * 0.042;
+    const pSide     = W * 0.22;
+    const pH        = H * 1.32;
+    const cSide     = W * 0.30;
+    const cH        = W * 0.14;
+    const cTipR     = cSide * 0.36;
+    const cTipH     = W * 0.26;
+
+    const barGeo    = new THREE.CylinderGeometry(barR, barR * 0.78, barH, 6);
+    const tipGeo    = new THREE.ConeGeometry(tipR, tipH, 4);
+    const pillarGeo = new THREE.BoxGeometry(pSide, pH, pSide);
+    const capGeo    = new THREE.BoxGeometry(cSide, cH, cSide);
+    const capTipGeo = new THREE.ConeGeometry(cTipR, cTipH, 4);
+
+    const put = (geo, mat, x, y, z, ry = 0) => {
+        const m = new THREE.Mesh(geo, mat);
+        m.position.set(x, y, z);
+        m.rotation.y = ry;
+        group.add(m);
+    };
+
+    const addBar = (x, z) => {
+        put(barGeo, ironMat, x, H * 0.10 + barH * 0.5, z);
+        put(tipGeo, ironMat, x, H * 0.10 + barH + tipH * 0.5, z, Math.PI / 4);
+    };
+
+    const addPillar = (x, z) => {
+        put(pillarGeo, stoneMat, x, pH * 0.5, z);
+        put(capGeo, stoneMat, x, pH + cH * 0.5, z);
+        put(capTipGeo, stoneMat, x, pH + cH + cTipH * 0.5, z, Math.PI / 4);
+    };
+
+    const maxRow = mazeRows  - 1;
+    const maxCol = mazeColumns - 1;
+    const pEvery = 4;   // pillar every N tiles
+    const bpt    = 3;   // iron bars per tile between pillars
+
+    const addBack = (w, h, x, y, z, ry) => {
+        const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), backMat);
+        m.position.set(x, y, z);
+        m.rotation.y = ry;
+        group.add(m);
+    };
+
+    const buildNS = (rowZ) => {
+        const z    = rowZ * tileSize;
+        const len  = (maxCol + 1) * tileSize;
+        const midX = maxCol * tileSize * 0.5;
+        // backing panel facing inward (FrontSide only visible from maze interior)
+        const inwardRY = rowZ === 0 ? 0 : Math.PI;
+        addBack(len, H, midX, H * 0.5, z, inwardRY);
+        put(new THREE.BoxGeometry(len, rThick, rDepth), ironMat, midX, H * 0.10, z);
+        put(new THREE.BoxGeometry(len, rThick, rDepth), ironMat, midX, H * 0.78, z);
+        for (let col = 0; col <= maxCol; col++) {
+            const x = col * tileSize;
+            if (col % pEvery === 0) {
+                addPillar(x, z);
+            } else {
+                const sp = tileSize / (bpt + 1);
+                for (let b = 1; b <= bpt; b++) {
+                    addBar(x - tileSize * 0.5 + sp * b, z);
+                }
+            }
+        }
+    };
+
+    const buildEW = (colX) => {
+        const x    = colX * tileSize;
+        const len  = (maxRow + 1) * tileSize;
+        const midZ = maxRow * tileSize * 0.5;
+        // backing panel facing inward
+        const inwardRY = colX === 0 ? -Math.PI / 2 : Math.PI / 2;
+        addBack(len, H, x, H * 0.5, midZ, inwardRY);
+        put(new THREE.BoxGeometry(rDepth, rThick, len), ironMat, x, H * 0.10, midZ);
+        put(new THREE.BoxGeometry(rDepth, rThick, len), ironMat, x, H * 0.78, midZ);
+        // skip row 0 and maxRow — corners already have pillars from buildNS
+        for (let row = 1; row < maxRow; row++) {
+            const z = row * tileSize;
+            if (row % pEvery === 0) {
+                addPillar(x, z);
+            } else {
+                const sp = tileSize / (bpt + 1);
+                for (let b = 1; b <= bpt; b++) {
+                    addBar(x, z - tileSize * 0.5 + sp * b);
+                }
+            }
+        }
+    };
+
+    buildNS(0);
+    buildNS(maxRow);
+    buildEW(0);
+    buildEW(maxCol);
 
     return group;
 }

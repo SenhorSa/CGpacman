@@ -1,14 +1,12 @@
 import * as THREE from 'three';
 import { createMaze, getCenterMarkerCell, getMazeData } from './maze.js';
-import { bindLightNumberKeys, registerLight } from './lights.js';
+import { bindLightNumberKeys, registerLight, setLightEnabledByKey } from './lights.js';
 import {
     MAP_CONFIGS,
     createHedgeWallTexture,
     createGrassFloorTexture,
     createConcreteWallTexture,
-    createMetalFloorTexture,
-    createFenceWallMaterial,
-    buildMansionEnvironment
+    createMetalFloorTexture
 } from './maps.js';
 import {
     collectCoins,
@@ -585,17 +583,10 @@ export function startGame(mapConfig = MAP_CONFIGS.hotel) {
     scene.add(ambientLight);
 
     const mainLight = registerLight('gameDirectional', new THREE.DirectionalLight(mapConfig.directionalColor, mapConfig.directionalIntensity));
-    mainLight.position.set(8, 12, 6);
     mainLight.castShadow = true;
     mainLight.shadow.mapSize.set(2048, 2048);
     mainLight.shadow.bias = -0.0003;
     mainLight.shadow.normalBias = 0.04;
-    mainLight.shadow.camera.left = -10;
-    mainLight.shadow.camera.right = 10;
-    mainLight.shadow.camera.top = 10;
-    mainLight.shadow.camera.bottom = -10;
-    mainLight.shadow.camera.near = 0.5;
-    mainLight.shadow.camera.far = 30;
     scene.add(mainLight);
 
     const wallTexture = getWallTextureForMap(mapConfig);
@@ -649,19 +640,69 @@ export function startGame(mapConfig = MAP_CONFIGS.hotel) {
     const { mazeWidth, mazeHeight, mazeCenterX, mazeCenterZ } = getMazeData(mazeLayout, tileSize);
     const centerMarkerCell = getCenterMarkerCell();
 
-    if (mapConfig.id === 'labirinto') {
-        const fenceMat = createFenceWallMaterial();
-        const maxRow = mazeRows - 1;
-        const maxCol = mazeColumns - 1;
-        for (const child of mazeGroup.children) {
-            if (child.userData?.isPanel) continue;
-            const wx = Math.round(child.position.x / tileSize);
-            const wz = Math.round(child.position.z / tileSize);
-            if (wx === 0 || wx === maxCol || wz === 0 || wz === maxRow) {
-                child.material = fenceMat;
-            }
-        }
-        buildMansionEnvironment(scene, mazeCenterX, mazeCenterZ, mazeWidth, mazeHeight, tileSize);
+    // Sun: 30 units from cell C, 60° elevation, 45° azimuth
+    {
+        const cx = centerMarkerCell ? centerMarkerCell.column * tileSize : mazeCenterX;
+        const cz = centerMarkerCell ? centerMarkerCell.row    * tileSize : mazeCenterZ;
+        const elev = Math.PI / 3;   // 60°
+        const azim = Math.PI / 4;   // 45° horizontal
+        mainLight.position.set(
+            cx + 30 * Math.cos(elev) * Math.cos(azim),
+            30 * Math.sin(elev),
+            cz + 30 * Math.cos(elev) * Math.sin(azim)
+        );
+        mainLight.target.position.set(cx, 0, cz);
+        scene.add(mainLight.target);
+        const half = Math.max(mazeWidth, mazeHeight) * 0.65;
+        mainLight.shadow.camera.left   = -half;
+        mainLight.shadow.camera.right  =  half;
+        mainLight.shadow.camera.top    =  half;
+        mainLight.shadow.camera.bottom = -half;
+        mainLight.shadow.camera.near   = 1;
+        mainLight.shadow.camera.far    = 80;
+        mainLight.shadow.camera.updateProjectionMatrix();
+
+        // Sun core
+        const sunCore = new THREE.Mesh(
+            new THREE.SphereGeometry(1.0, 16, 16),
+            new THREE.MeshBasicMaterial({ color: 0xfffde8 })
+        );
+        sunCore.position.copy(mainLight.position);
+        scene.add(sunCore);
+
+        // Glow halo via Sprite with radial-gradient canvas texture
+        const glowCanvas = document.createElement('canvas');
+        glowCanvas.width = 256;
+        glowCanvas.height = 256;
+        const glowCtx = glowCanvas.getContext('2d');
+        const grad = glowCtx.createRadialGradient(128, 128, 0, 128, 128, 128);
+        grad.addColorStop(0.00, 'rgba(255, 255, 220, 1.00)');
+        grad.addColorStop(0.15, 'rgba(255, 240, 100, 0.85)');
+        grad.addColorStop(0.40, 'rgba(255, 200,  40, 0.30)');
+        grad.addColorStop(0.70, 'rgba(255, 160,   0, 0.08)');
+        grad.addColorStop(1.00, 'rgba(255, 120,   0, 0.00)');
+        glowCtx.fillStyle = grad;
+        glowCtx.fillRect(0, 0, 256, 256);
+
+        const sunSprite = new THREE.Sprite(new THREE.SpriteMaterial({
+            map: new THREE.CanvasTexture(glowCanvas),
+            blending: THREE.AdditiveBlending,
+            transparent: true,
+            depthWrite: false
+        }));
+        sunSprite.position.copy(mainLight.position);
+        sunSprite.scale.set(14, 14, 1);
+        scene.add(sunSprite);
+
+        let sunOn = true;
+        window.addEventListener('keydown', (e) => {
+            if (e.key !== '6') return;
+            sunOn = !sunOn;
+            setLightEnabledByKey('gameDirectional', sunOn);
+            setLightEnabledByKey('gameAmbient', sunOn);
+            sunCore.visible  = sunOn;
+            sunSprite.visible = sunOn;
+        });
     }
 
     alignCarpetTextureToGrid(floorTexture, mazeWidth, mazeHeight, tileSize, centerMarkerCell);
@@ -996,9 +1037,7 @@ export function startGame(mapConfig = MAP_CONFIGS.hotel) {
         pacman3D.visible = true;
 
         for (const wall of mazeGroup.children) {
-            if (wall.userData?.isPanel) {
-                continue;
-            }
+            if (wall.userData?.isPanel) continue;
             wall.material = wallMaterialPerspective;
         }
     }
