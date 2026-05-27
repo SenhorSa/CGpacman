@@ -9,6 +9,7 @@ import {
 import { createMaze, getCenterMarkerCell, getMazeData } from './maze.js';
 import { bindLightNumberKeys, registerLight } from './lights.js';
 import { MAP_CONFIGS, drawMapThumbnail } from './maps.js';
+import { loadScores } from './scores.js';
 
 function createWallTexture(size = 256) {
 	const canvas = document.createElement('canvas');
@@ -153,28 +154,30 @@ function hydrateScoreList() {
 
 	scoreList.innerHTML = '';
 
-	const stored = localStorage.getItem('pacman3d_scores');
-	const scores = stored ? JSON.parse(stored) : [];
+	const scores = loadScores();
 
-	if (!Array.isArray(scores) || scores.length === 0) {
+	if (scores.length === 0) {
 		scoreEmpty.style.display = 'block';
 		return;
 	}
 
 	scoreEmpty.style.display = 'none';
 
-	const maxEntries = 5;
-	const scoreCount = Math.min(scores.length, maxEntries);
-	for (let index = 0; index < scoreCount; index += 1) {
+	for (let index = 0; index < scores.length; index += 1) {
 		const entry = scores[index];
+		const resultLabel = entry.result === 'win' ? 'Vitória' : 'Derrota';
+		const mapLabel = entry.mapName ?? entry.mapId ?? '—';
+
 		const listItem = document.createElement('li');
-		const label = document.createElement('span');
-		const value = document.createElement('span');
+		const left = document.createElement('span');
+		const right = document.createElement('span');
 
-		label.textContent = entry?.label ?? 'Jogo';
-		value.textContent = entry?.score ?? 0;
+		left.textContent = `#${index + 1}  ${mapLabel} · ${resultLabel}`;
+		right.textContent = `${entry.score ?? 0} pts`;
+		right.style.paddingLeft = '2rem';
+		right.style.whiteSpace = 'nowrap';
 
-		listItem.append(label, value);
+		listItem.append(left, right);
 		scoreList.appendChild(listItem);
 	}
 }

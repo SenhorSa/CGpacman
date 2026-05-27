@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { createMaze, getCenterMarkerCell, getMazeData } from './maze.js';
 import { bindLightNumberKeys, registerLight, setLightEnabledByKey } from './lights.js';
+import { saveScore } from './scores.js';
 import {
     MAP_CONFIGS,
     createHedgeWallTexture,
@@ -597,7 +598,8 @@ export function startGame(mapConfig = MAP_CONFIGS.hotel) {
         map: wallTexture ?? null
     });
     const wallMaterialOrthographic = new THREE.MeshBasicMaterial({
-        color: 0x1a73ff,
+        map: wallTexture ?? null,
+        color: 0xffffff,
         toneMapped: false,
         polygonOffset: true,
         polygonOffsetFactor: -2,
@@ -610,7 +612,11 @@ export function startGame(mapConfig = MAP_CONFIGS.hotel) {
         metalness: 0.0,
         map: floorTexture ?? null
     });
-    const floorMaterialOrthographic = new THREE.MeshBasicMaterial({ color: 0x111827, toneMapped: false });
+    const floorMaterialOrthographic = new THREE.MeshBasicMaterial({
+        map: floorTexture ?? null,
+        color: 0xffffff,
+        toneMapped: false
+    });
     const ceilingColor = mapConfig.ceilingColor ?? 0xede0c8;
     const ceilingMaterial = new THREE.MeshStandardMaterial({
         color: ceilingColor,
@@ -999,13 +1005,21 @@ export function startGame(mapConfig = MAP_CONFIGS.hotel) {
         powerTimerElement.classList.add('is-hidden');
         pauseRoot?.classList.add('is-hidden');
 
+        const rank = saveScore({
+            score: totalScore,
+            mapId: mapConfig.id,
+            mapName: mapConfig.name,
+            result
+        });
+
         if (gameoverRoot) {
             const isWin = result === 'win';
             if (gameoverTitle) {
                 gameoverTitle.textContent = isWin ? 'Parabens!! Vitoria' : 'Game Over';
             }
             if (gameoverScore) {
-                gameoverScore.textContent = `Pontos: ${totalScore}`;
+                const rankText = rank !== null ? `  •  #${rank} no Top 10` : '';
+                gameoverScore.textContent = `Pontos: ${totalScore}${rankText}`;
             }
             gameoverRoot.classList.remove('is-hidden');
         }
@@ -1382,6 +1396,15 @@ export function startGame(mapConfig = MAP_CONFIGS.hotel) {
         lastPlayerX = perspectiveCamera.position.x;
         lastPlayerZ = perspectiveCamera.position.z;
 
+        // Pac-Man mouth open/close animation
+        const mouthT = Math.abs(Math.sin(clock.elapsedTime * 7));
+        if (pacman3D.userData.mouthMesh) {
+            pacman3D.userData.mouthMesh.morphTargetInfluences[0] = mouthT;
+        }
+        if (pacman2D.userData.mouthMesh) {
+            pacman2D.userData.mouthMesh.morphTargetInfluences[0] = mouthT;
+        }
+
         renderer.render(scene, activeCamera);
 
         if (minimapRenderer && minimapCamera) {
@@ -1390,6 +1413,8 @@ export function startGame(mapConfig = MAP_CONFIGS.hotel) {
             minimapCamera.position.set(playerX, minimapHeight, playerZ);
             minimapCamera.lookAt(playerX, 0, playerZ);
 
+            const prevFog        = scene.fog;
+            const prevBackground = scene.background;
             const prevCeilingVisible = ceiling.visible;
             const prevFloorMaterial = floor.material;
             const prevPacman3DVisible = pacman3D.visible;
@@ -1397,6 +1422,8 @@ export function startGame(mapConfig = MAP_CONFIGS.hotel) {
             const prevGhostVisibility = ghosts.map((ghost) => ghost.visible);
             const prevGhost2DVisibility = ghost2DModels.map((ghost2d) => ghost2d.visible);
             const prevWallMaterials = mazeGroup.children.map((wall) => wall.material);
+            scene.fog        = null;
+            scene.background = null;
 
             ceiling.visible = false;
             floor.material = floorMaterialOrthographic;
@@ -1427,6 +1454,8 @@ export function startGame(mapConfig = MAP_CONFIGS.hotel) {
 
             minimapRenderer.render(scene, minimapCamera);
 
+            scene.fog        = prevFog;
+            scene.background = prevBackground;
             ceiling.visible = prevCeilingVisible;
             floor.material = prevFloorMaterial;
             pacman3D.visible = prevPacman3DVisible;
