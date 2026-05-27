@@ -3,7 +3,7 @@ import * as THREE from 'three';
 const textureLoader = new THREE.TextureLoader();
 
 export function createHedgeWallTexture() {
-    const texture = textureLoader.load('./Imagens/Ambiente/wall_textura.jpg');
+    const texture = textureLoader.load('.\\Imagens\\Mapas\\Labirinto\\wall_textura.jpg');
     texture.wrapS = THREE.RepeatWrapping;
     texture.wrapT = THREE.RepeatWrapping;
     texture.repeat.set(2, 1);
