@@ -6,7 +6,9 @@ import {
     createHedgeWallTexture,
     createGrassFloorTexture,
     createConcreteWallTexture,
-    createMetalFloorTexture
+    createMetalFloorTexture,
+    createFenceWallMaterial,
+    buildMansionEnvironment
 } from './maps.js';
 import {
     collectCoins,
@@ -368,9 +370,10 @@ export function startGame(mapConfig = MAP_CONFIGS.hotel) {
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(mapConfig.sceneBackground);
-    if (mapConfig.fogEnabled) {
-        scene.fog = new THREE.Fog(mapConfig.fogColor, mapConfig.fogNear, mapConfig.fogFar);
-    }
+    const sceneFog = mapConfig.fogEnabled
+        ? new THREE.Fog(mapConfig.fogColor, mapConfig.fogNear, mapConfig.fogFar)
+        : null;
+    scene.fog = sceneFog;
 
     bindLightNumberKeys();
 
@@ -645,6 +648,21 @@ export function startGame(mapConfig = MAP_CONFIGS.hotel) {
 
     const { mazeWidth, mazeHeight, mazeCenterX, mazeCenterZ } = getMazeData(mazeLayout, tileSize);
     const centerMarkerCell = getCenterMarkerCell();
+
+    if (mapConfig.id === 'labirinto') {
+        const fenceMat = createFenceWallMaterial();
+        const maxRow = mazeRows - 1;
+        const maxCol = mazeColumns - 1;
+        for (const child of mazeGroup.children) {
+            if (child.userData?.isPanel) continue;
+            const wx = Math.round(child.position.x / tileSize);
+            const wz = Math.round(child.position.z / tileSize);
+            if (wx === 0 || wx === maxCol || wz === 0 || wz === maxRow) {
+                child.material = fenceMat;
+            }
+        }
+        buildMansionEnvironment(scene, mazeCenterX, mazeCenterZ, mazeWidth, mazeHeight, tileSize);
+    }
 
     alignCarpetTextureToGrid(floorTexture, mazeWidth, mazeHeight, tileSize, centerMarkerCell);
     if (mapConfig.pointLightIntensity > 0) {
@@ -964,6 +982,7 @@ export function startGame(mapConfig = MAP_CONFIGS.hotel) {
         }
         floor.material = floorMaterialPerspective;
         ceiling.visible = mapConfig.ceilingVisible !== false;
+        scene.fog = sceneFog;
 
         for (const ghost of ghosts) {
             ghost.visible = true;
@@ -993,6 +1012,7 @@ export function startGame(mapConfig = MAP_CONFIGS.hotel) {
         }
         floor.material = floorMaterialOrthographic;
         ceiling.visible = false;
+        scene.fog = null;
 
         for (const ghost of ghosts) {
             ghost.visible = false;

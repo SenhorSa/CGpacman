@@ -33,10 +33,10 @@ const ghostColors = {
 const ghostFrightenedColor = 0x1e3a8a;
 
 const dogColors = {
-    tan: 0xC27C4E,
-    dark: 0x7B4A2A,
-    golden: 0xD4A037,
-    russet: 0xA04020
+    shadow: 0x0e0c0a,
+    obsidian: 0x0b0908,
+    sable: 0x140e0b,
+    charcoal: 0x0f0e0d
 };
 
 const robotColors = {
@@ -533,61 +533,178 @@ function buildGhost2D(color, tileSize) {
 function buildDog3D(color, tileSize) {
     const group = new THREE.Group();
     const r = tileSize * ghostSettings.radiusRatio;
-    const bodyMat = new THREE.MeshStandardMaterial({ color, roughness: 0.75, metalness: 0.0 });
-    const eyeMat = new THREE.MeshStandardMaterial({ color: 0xdd1111, emissive: 0xff2200, emissiveIntensity: 1.5 });
-    const noseMat = new THREE.MeshStandardMaterial({ color: 0x180808, roughness: 0.5 });
 
-    const bW = r * 0.80;
-    const bH = r * 0.60;
-    const bD = r * 1.35;
-    const body = new THREE.Mesh(new THREE.BoxGeometry(bW, bH, bD), bodyMat);
-    group.add(body);
+    const skinMat = new THREE.MeshStandardMaterial({ color, roughness: 0.88, metalness: 0.0 });
+    const eyeMat = new THREE.MeshStandardMaterial({ color: 0xe8e2cc, emissive: 0xd0cab0, emissiveIntensity: 0.55 });
+    const toothMat = new THREE.MeshStandardMaterial({ color: 0xf2efe6, roughness: 0.4 });
+    const mouthMat = new THREE.MeshStandardMaterial({ color: 0x6a0808, roughness: 0.75, side: THREE.DoubleSide });
+    const noseMat = new THREE.MeshStandardMaterial({ color: 0x050303, roughness: 0.25 });
 
-    const hS = r * 0.58;
-    const head = new THREE.Mesh(new THREE.BoxGeometry(hS, hS * 0.85, hS * 0.72), bodyMat);
-    head.position.set(0, bH * 0.22, bD * 0.5 + hS * 0.36);
+    // Torso — elongated sphere scaled to sinewy dog shape
+    const torso = new THREE.Mesh(new THREE.SphereGeometry(r * 0.50, 10, 7), skinMat);
+    torso.scale.set(0.76, 0.66, 1.42);
+    group.add(torso);
+
+    // Shoulder muscle bulge
+    const shoulder = new THREE.Mesh(new THREE.SphereGeometry(r * 0.28, 8, 6), skinMat);
+    shoulder.scale.set(1.18, 0.70, 0.88);
+    shoulder.position.set(0, r * 0.18, r * 0.40);
+    group.add(shoulder);
+
+    // Neck — cylinder angled forward
+    const neckH = r * 0.46;
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.22, r * 0.27, neckH, 8), skinMat);
+    neck.position.set(0, r * 0.20, r * 0.48);
+    neck.rotation.x = -0.52;
+    group.add(neck);
+
+    // Head
+    const headW = r * 0.60;
+    const headH = r * 0.48;
+    const headD = r * 0.58;
+    const hY = r * 0.22;
+    const hZ = r * 0.88;
+    const head = new THREE.Mesh(new THREE.BoxGeometry(headW, headH, headD), skinMat);
+    head.position.set(0, hY, hZ);
     group.add(head);
 
-    const snout = new THREE.Mesh(new THREE.BoxGeometry(hS * 0.52, hS * 0.34, hS * 0.38), bodyMat);
-    snout.position.set(0, -hS * 0.16, bD * 0.5 + hS * 0.72 + hS * 0.18);
-    group.add(snout);
-
-    const nose = new THREE.Mesh(new THREE.SphereGeometry(hS * 0.10, 7, 5), noseMat);
-    nose.position.set(0, -hS * 0.14, bD * 0.5 + hS * 0.72 + hS * 0.34);
-    group.add(nose);
-
+    // Ears — pointed Doberman-style cones
     for (const side of [-1, 1]) {
-        const ear = new THREE.Mesh(new THREE.BoxGeometry(hS * 0.18, hS * 0.26, hS * 0.16), bodyMat);
-        ear.position.set(side * hS * 0.30, hS * 0.55, bD * 0.5 + hS * 0.24);
-        ear.rotation.z = side * 0.28;
+        const ear = new THREE.Mesh(new THREE.ConeGeometry(r * 0.10, r * 0.36, 5), skinMat);
+        ear.position.set(side * headW * 0.40, hY + headH * 0.5 + r * 0.17, hZ - r * 0.04);
+        ear.rotation.z = side * 0.10;
         group.add(ear);
     }
 
+    // Upper snout
+    const snoutW = headW * 0.72;
+    const snoutH = headH * 0.30;
+    const snoutD = r * 0.52;
+    const snoutY = hY - headH * 0.14;
+    const snoutZ = hZ + headD * 0.5 + snoutD * 0.44;
+    const snout = new THREE.Mesh(new THREE.BoxGeometry(snoutW, snoutH, snoutD), skinMat);
+    snout.position.set(0, snoutY, snoutZ);
+    group.add(snout);
+
+    const nose = new THREE.Mesh(new THREE.SphereGeometry(r * 0.07, 8, 6), noseMat);
+    nose.scale.set(1, 0.72, 0.82);
+    nose.position.set(0, snoutY, snoutZ + snoutD * 0.5 + r * 0.02);
+    group.add(nose);
+
+    // Lower jaw — slightly dropped open
+    const jawW = snoutW * 0.88;
+    const jawH = snoutH * 0.76;
+    const jawD = snoutD * 0.92;
+    const jawY = snoutY - snoutH * 0.58 - jawH * 0.5;
+    const jaw = new THREE.Mesh(new THREE.BoxGeometry(jawW, jawH, jawD), skinMat);
+    jaw.position.set(0, jawY, snoutZ - r * 0.04);
+    group.add(jaw);
+
+    // Mouth interior
+    const mouthPlane = new THREE.Mesh(new THREE.PlaneGeometry(snoutW * 0.82, snoutH * 0.75), mouthMat);
+    mouthPlane.rotation.x = 0.22;
+    mouthPlane.position.set(0, snoutY - snoutH * 0.48, snoutZ + snoutD * 0.12);
+    group.add(mouthPlane);
+
+    // Upper teeth (6 cones pointing down)
+    const tw = r * 0.036;
+    const th = r * 0.10;
+    for (let i = 0; i < 6; i += 1) {
+        const tx = (i - 2.5) * (snoutW * 0.68 / 5);
+        const upper = new THREE.Mesh(new THREE.ConeGeometry(tw, th, 4), toothMat);
+        upper.rotation.x = Math.PI;
+        upper.position.set(tx, snoutY - snoutH * 0.42, snoutZ + snoutD * 0.14);
+        group.add(upper);
+    }
+    // Lower teeth (4 cones pointing up, offset)
+    for (let i = 0; i < 4; i += 1) {
+        const tx = (i - 1.5) * (snoutW * 0.58 / 3);
+        const lower = new THREE.Mesh(new THREE.ConeGeometry(tw * 0.85, th * 0.88, 4), toothMat);
+        lower.position.set(tx, jawY + jawH * 0.42, snoutZ + snoutD * 0.10);
+        group.add(lower);
+    }
+
+    // Eyes — pale milky white (unsettling)
     for (const side of [-1, 1]) {
-        const eye = new THREE.Mesh(new THREE.SphereGeometry(hS * 0.09, 7, 5), eyeMat);
-        eye.position.set(side * hS * 0.18, hS * 0.10, bD * 0.5 + hS * 0.60);
+        const eye = new THREE.Mesh(new THREE.SphereGeometry(r * 0.10, 9, 7), eyeMat);
+        eye.position.set(side * headW * 0.27, hY + headH * 0.10, hZ + headD * 0.44);
         group.add(eye);
     }
 
-    const lW = r * 0.17;
-    const lH = r * 0.40;
-    for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
-        const leg = new THREE.Mesh(new THREE.BoxGeometry(lW, lH, lW), bodyMat);
-        leg.position.set(sx * bW * 0.30, -bH * 0.5 - lH * 0.5, sz * bD * 0.28);
-        group.add(leg);
+    // Leg geometry constants
+    const legTop = -r * 0.06;
+    const fuH = r * 0.37;
+    const flH = r * 0.42;
+    const lr  = r * 0.092;
+    const buH = r * 0.34;
+    const blH = r * 0.38;
+
+    // Shoulder and hip joint connectors
+    for (const side of [-1, 1]) {
+        const sc = new THREE.Mesh(new THREE.SphereGeometry(lr * 2.1, 8, 6), skinMat);
+        sc.position.set(side * r * 0.29, legTop + r * 0.04, r * 0.33);
+        group.add(sc);
+        const hc = new THREE.Mesh(new THREE.SphereGeometry(lr * 1.9, 8, 6), skinMat);
+        hc.position.set(side * r * 0.27, legTop + r * 0.04, -r * 0.35);
+        group.add(hc);
     }
 
-    const tail = new THREE.Mesh(new THREE.BoxGeometry(r * 0.10, r * 0.28, r * 0.10), bodyMat);
-    tail.position.set(0, bH * 0.15, -bD * 0.5 - r * 0.10);
-    tail.rotation.x = -0.55;
+    // Each leg is a sub-group whose LOCAL origin is the pivot (attachment point at top).
+    // Geometry hangs down from y=0 of the sub-group so rotation.x swings the leg fore/aft.
+    // Quadruped trot: diagonal pairs share phase (FL+BR=0, FR+BL=π).
+    const legDefs = [
+        { x:  r * 0.29, z:  r * 0.34, front: true,  phase: 0       },  // front-left
+        { x: -r * 0.29, z:  r * 0.34, front: true,  phase: Math.PI },  // front-right
+        { x: -r * 0.27, z: -r * 0.36, front: false, phase: 0       },  // back-right
+        { x:  r * 0.27, z: -r * 0.36, front: false, phase: Math.PI },  // back-left
+    ];
+
+    const legGroups = [];
+    for (const def of legDefs) {
+        const lg = new THREE.Group();
+        lg.position.set(def.x, legTop, def.z);
+
+        if (def.front) {
+            const fu = new THREE.Mesh(new THREE.CylinderGeometry(lr * 0.90, lr * 0.76, fuH, 7), skinMat);
+            fu.position.y = -fuH * 0.5;
+            lg.add(fu);
+            const fl = new THREE.Mesh(new THREE.CylinderGeometry(lr * 0.60, lr * 0.48, flH, 6), skinMat);
+            fl.position.set(0, -fuH - flH * 0.5, r * 0.02);
+            lg.add(fl);
+            const fp = new THREE.Mesh(new THREE.SphereGeometry(lr * 1.12, 7, 5), skinMat);
+            fp.scale.set(1.3, 0.50, 1.6);
+            fp.position.set(0, -fuH - flH, r * 0.03);
+            lg.add(fp);
+        } else {
+            const bu = new THREE.Mesh(new THREE.CylinderGeometry(lr * 1.18, lr * 0.88, buH, 7), skinMat);
+            bu.position.y = -buH * 0.5;
+            lg.add(bu);
+            const bl = new THREE.Mesh(new THREE.CylinderGeometry(lr * 0.56, lr * 0.44, blH, 6), skinMat);
+            bl.position.set(0, -buH - blH * 0.5, r * 0.02);
+            lg.add(bl);
+            const bp = new THREE.Mesh(new THREE.SphereGeometry(lr * 1.02, 7, 5), skinMat);
+            bp.scale.set(1.25, 0.48, 1.52);
+            bp.position.set(0, -buH - blH, r * 0.01);
+            lg.add(bp);
+        }
+
+        group.add(lg);
+        legGroups.push({ mesh: lg, phase: def.phase });
+    }
+
+    // Tail
+    const tail = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.038, r * 0.022, r * 0.48, 6), skinMat);
+    tail.position.set(0, r * 0.04, -r * 0.62);
+    tail.rotation.x = 0.48;
     group.add(tail);
 
-    group.userData.bodyMaterial = bodyMat;
-    group.userData.bodyParts = [body, head, snout, tail];
+    group.userData.bodyMaterial = skinMat;
+    group.userData.bodyParts = [torso, shoulder, neck, head, snout, jaw, tail];
     group.userData.eyeParts = [];
     group.userData.faceGroup = null;
     group.userData.faceYaw = 0;
     group.userData.rotateFullBody = true;
+    group.userData.legGroups = legGroups;
     return group;
 }
 
@@ -595,11 +712,11 @@ function buildDog2D(color, tileSize) {
     const group = new THREE.Group();
     const r = tileSize * ghostSettings.radiusRatio;
     const mat = new THREE.MeshBasicMaterial({ color });
-    const body = new THREE.Mesh(new THREE.PlaneGeometry(r * 1.4, r * 1.1), mat);
-    const eyeMat = new THREE.MeshBasicMaterial({ color: 0xff2200 });
+    const body = new THREE.Mesh(new THREE.PlaneGeometry(r * 1.4, r * 1.0), mat);
+    const eyeMat = new THREE.MeshBasicMaterial({ color: 0xe8e2cc });
     for (const side of [-1, 1]) {
         const eye = new THREE.Mesh(new THREE.CircleGeometry(r * 0.10, 8), eyeMat);
-        eye.position.set(side * r * 0.22, r * 0.15, 0.01);
+        eye.position.set(side * r * 0.20, r * 0.14, 0.01);
         group.add(eye);
     }
     group.add(body);
@@ -942,6 +1059,34 @@ export function updateGhosts({
         const resolvedTarget = targetResolver ? targetResolver(ghost) : targetCell;
         tryMoveGhost(ghost, mazeLayout, tileSize, deltaSeconds, centerMarkerCell, resolvedMode, resolvedTarget);
         updateGhostFaceOrientation(ghost, deltaSeconds);
+        updateEnemyLegs(ghost, deltaSeconds);
+    }
+}
+
+function updateEnemyLegs(ghost, deltaSeconds) {
+    const { legGroups } = ghost.userData;
+    if (!legGroups || legGroups.length === 0) {
+        return;
+    }
+
+    const dir = ghost.userData.direction;
+    const isMoving = Boolean(dir && (dir.row !== 0 || dir.column !== 0));
+
+    if (isMoving) {
+        ghost.userData.walkTime = (ghost.userData.walkTime ?? 0) + deltaSeconds;
+    }
+
+    const t = ghost.userData.walkTime ?? 0;
+    const speed = ghost.userData.speed ?? ghostSettings.moveSpeed;
+    const freq = speed * 4.8;
+    const amp = 0.44;
+
+    for (const leg of legGroups) {
+        if (isMoving) {
+            leg.mesh.rotation.x = Math.sin(t * freq + leg.phase) * amp;
+        } else {
+            leg.mesh.rotation.x *= Math.max(0, 1 - deltaSeconds * 10);
+        }
     }
 }
 
