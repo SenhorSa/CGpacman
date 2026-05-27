@@ -8,122 +8,8 @@ import {
 } from './characters.js';
 import { createMaze, getCenterMarkerCell, getMazeData } from './maze.js';
 import { bindLightNumberKeys, registerLight } from './lights.js';
-import { MAP_CONFIGS, drawMapThumbnail } from './maps.js';
+import { MAP_CONFIGS, drawMapThumbnail, createHotelWallTexture, createHotelFloorTexture } from './maps.js';
 import { loadScores } from './scores.js';
-
-function createWallTexture(size = 256) {
-	const canvas = document.createElement('canvas');
-	canvas.width = size;
-	canvas.height = size;
-	const ctx = canvas.getContext('2d');
-	if (!ctx) {
-		return null;
-	}
-
-	// Deep burgundy/wine plaster base
-	ctx.fillStyle = '#6e0f1a';
-	ctx.fillRect(0, 0, size, size);
-
-	// Subtle vertical gradient: slightly lighter at top, darker at bottom
-	const gradient = ctx.createLinearGradient(0, 0, 0, size);
-	gradient.addColorStop(0, 'rgba(255, 255, 255, 0.10)');
-	gradient.addColorStop(0.35, 'rgba(255, 255, 255, 0.02)');
-	gradient.addColorStop(1, 'rgba(0, 0, 0, 0.18)');
-	ctx.fillStyle = gradient;
-	ctx.fillRect(0, 0, size, size);
-
-	// Fine plaster grain noise
-	const imageData = ctx.getImageData(0, 0, size, size);
-	for (let i = 0; i < imageData.data.length; i += 4) {
-		const noise = (Math.random() - 0.5) * 18;
-		imageData.data[i]     = Math.max(0, Math.min(255, imageData.data[i]     + noise));
-		imageData.data[i + 1] = Math.max(0, Math.min(255, imageData.data[i + 1] + noise));
-		imageData.data[i + 2] = Math.max(0, Math.min(255, imageData.data[i + 2] + noise));
-	}
-	ctx.putImageData(imageData, 0, 0);
-
-	const texture = new THREE.CanvasTexture(canvas);
-	texture.wrapS = THREE.RepeatWrapping;
-	texture.wrapT = THREE.RepeatWrapping;
-	texture.repeat.set(2, 1);
-	texture.anisotropy = 4;
-	return texture;
-}
-
-function createCarpetFloorTexture(size = 512) {
-	const canvas = document.createElement('canvas');
-	canvas.width = size;
-	canvas.height = size;
-	const ctx = canvas.getContext('2d');
-	if (!ctx) {
-		return null;
-	}
-
-	// Warm amber/gold carpet base (hotel corridor palette)
-	ctx.fillStyle = '#c07830';
-	ctx.fillRect(0, 0, size, size);
-
-	const cols = 4;
-	const rows = 4;
-	const tw = size / cols;
-	const th = size / rows;
-
-	const drawDiamond = (cx, cy, hw, hh) => {
-		ctx.beginPath();
-		ctx.moveTo(cx,      cy - hh);
-		ctx.lineTo(cx + hw, cy     );
-		ctx.lineTo(cx,      cy + hh);
-		ctx.lineTo(cx - hw, cy     );
-		ctx.closePath();
-	};
-
-	for (let row = 0; row < rows; row += 1) {
-		for (let col = 0; col < cols; col += 1) {
-			const cx = (col + 0.5) * tw;
-			const cy = (row + 0.5) * th;
-
-			// Outer diamond — darker rim fill
-			drawDiamond(cx, cy, tw * 0.46, th * 0.46);
-			ctx.fillStyle = 'rgba(155, 85, 15, 0.30)';
-			ctx.fill();
-			drawDiamond(cx, cy, tw * 0.46, th * 0.46);
-			ctx.strokeStyle = 'rgba(80, 32, 6, 0.80)';
-			ctx.lineWidth = size / 110;
-			ctx.stroke();
-
-			// Middle diamond — lighter gold accent
-			drawDiamond(cx, cy, tw * 0.30, th * 0.30);
-			ctx.fillStyle = 'rgba(240, 180, 70, 0.28)';
-			ctx.fill();
-			drawDiamond(cx, cy, tw * 0.30, th * 0.30);
-			ctx.strokeStyle = 'rgba(80, 32, 6, 0.55)';
-			ctx.lineWidth = size / 220;
-			ctx.stroke();
-
-			// Inner center diamond — dark accent
-			drawDiamond(cx, cy, tw * 0.10, th * 0.10);
-			ctx.fillStyle = 'rgba(80, 32, 6, 0.50)';
-			ctx.fill();
-		}
-	}
-
-	// Fine carpet fibre noise
-	const imageData = ctx.getImageData(0, 0, size, size);
-	for (let i = 0; i < imageData.data.length; i += 4) {
-		const noise = (Math.random() - 0.5) * 16;
-		imageData.data[i]     = Math.max(0, Math.min(255, imageData.data[i]     + noise));
-		imageData.data[i + 1] = Math.max(0, Math.min(255, imageData.data[i + 1] + noise));
-		imageData.data[i + 2] = Math.max(0, Math.min(255, imageData.data[i + 2] + noise));
-	}
-	ctx.putImageData(imageData, 0, 0);
-
-	const texture = new THREE.CanvasTexture(canvas);
-	texture.wrapS = THREE.RepeatWrapping;
-	texture.wrapT = THREE.RepeatWrapping;
-	texture.repeat.set(4, 4);
-	texture.anisotropy = 4;
-	return texture;
-}
 
 const menuRoot = document.getElementById('menu-root');
 const backButton = document.getElementById('menu-back');
@@ -266,14 +152,14 @@ function setupMenuMazeBackground() {
 	const wallHeight = 1;
 	const mazeRows = 23;
 	const mazeColumns = 33;
-	const wallTexture = createWallTexture(256);
+	const wallTexture = createHotelWallTexture(256);
 	const wallMaterial = new THREE.MeshStandardMaterial({
 		color: 0xffffff,
 		roughness: 0.85,
 		metalness: 0.0,
 		map: wallTexture ?? null
 	});
-	const floorTexture = createCarpetFloorTexture(512);
+	const floorTexture = createHotelFloorTexture(512);
 	const floorMaterial = new THREE.MeshStandardMaterial({
 		color: 0xffffff,
 		roughness: 0.9,

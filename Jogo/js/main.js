@@ -7,7 +7,9 @@ import {
     createHedgeWallTexture,
     createGrassFloorTexture,
     createConcreteWallTexture,
-    createMetalFloorTexture
+    createMetalFloorTexture,
+    createHotelWallTexture,
+    createHotelFloorTexture
 } from './maps.js';
 import {
     collectCoins,
@@ -24,143 +26,6 @@ import {
     updateGhosts,
     updatePlayer
 } from './characters.js';
-
-function createWallTexture(size = 256) {
-    const canvas = document.createElement('canvas');
-    canvas.width = size;
-    canvas.height = size;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) {
-        return null;
-    }
-
-    // Deep burgundy/wine plaster base
-    ctx.fillStyle = '#6e0f1a';
-    ctx.fillRect(0, 0, size, size);
-
-    // Subtle vertical gradient: slightly lighter at top (ceiling bounce light), darker at bottom
-    const gradient = ctx.createLinearGradient(0, 0, 0, size);
-    gradient.addColorStop(0, 'rgba(255, 255, 255, 0.10)');
-    gradient.addColorStop(0.35, 'rgba(255, 255, 255, 0.02)');
-    gradient.addColorStop(1, 'rgba(0, 0, 0, 0.18)');
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, size, size);
-
-    // Fine plaster grain noise
-    const imageData = ctx.getImageData(0, 0, size, size);
-    for (let i = 0; i < imageData.data.length; i += 4) {
-        const noise = (Math.random() - 0.5) * 18;
-        imageData.data[i]     = Math.max(0, Math.min(255, imageData.data[i]     + noise));
-        imageData.data[i + 1] = Math.max(0, Math.min(255, imageData.data[i + 1] + noise));
-        imageData.data[i + 2] = Math.max(0, Math.min(255, imageData.data[i + 2] + noise));
-    }
-    ctx.putImageData(imageData, 0, 0);
-
-    const texture = new THREE.CanvasTexture(canvas);
-    texture.wrapS = THREE.RepeatWrapping;
-    texture.wrapT = THREE.RepeatWrapping;
-    texture.repeat.set(2, 1);
-    texture.anisotropy = 4;
-    return texture;
-}
-
-function createCarpetFloorTexture(size = 512) {
-    const canvas = document.createElement('canvas');
-    canvas.width = size;
-    canvas.height = size;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) {
-        return null;
-    }
-
-    // Warm amber/gold carpet base (hotel corridor palette)
-    ctx.fillStyle = '#c07830';
-    ctx.fillRect(0, 0, size, size);
-
-    const cols = 4;
-    const rows = 4;
-    const tw = size / cols;
-    const th = size / rows;
-
-    const drawDiamond = (cx, cy, hw, hh) => {
-        ctx.beginPath();
-        ctx.moveTo(cx,      cy - hh);
-        ctx.lineTo(cx + hw, cy     );
-        ctx.lineTo(cx,      cy + hh);
-        ctx.lineTo(cx - hw, cy     );
-        ctx.closePath();
-    };
-
-    for (let row = 0; row < rows; row += 1) {
-        for (let col = 0; col < cols; col += 1) {
-            const cx = (col + 0.5) * tw;
-            const cy = (row + 0.5) * th;
-
-            // Outer diamond — darker rim fill
-            drawDiamond(cx, cy, tw * 0.46, th * 0.46);
-            ctx.fillStyle = 'rgba(155, 85, 15, 0.30)';
-            ctx.fill();
-            drawDiamond(cx, cy, tw * 0.46, th * 0.46);
-            ctx.strokeStyle = 'rgba(80, 32, 6, 0.80)';
-            ctx.lineWidth = size / 110;
-            ctx.stroke();
-
-            // Middle diamond — lighter gold accent
-            drawDiamond(cx, cy, tw * 0.30, th * 0.30);
-            ctx.fillStyle = 'rgba(240, 180, 70, 0.28)';
-            ctx.fill();
-            drawDiamond(cx, cy, tw * 0.30, th * 0.30);
-            ctx.strokeStyle = 'rgba(80, 32, 6, 0.55)';
-            ctx.lineWidth = size / 220;
-            ctx.stroke();
-
-            // Inner center diamond — dark accent
-            drawDiamond(cx, cy, tw * 0.10, th * 0.10);
-            ctx.fillStyle = 'rgba(80, 32, 6, 0.50)';
-            ctx.fill();
-        }
-    }
-
-    // Fine carpet fibre noise
-    const imageData = ctx.getImageData(0, 0, size, size);
-    for (let i = 0; i < imageData.data.length; i += 4) {
-        const noise = (Math.random() - 0.5) * 16;
-        imageData.data[i]     = Math.max(0, Math.min(255, imageData.data[i]     + noise));
-        imageData.data[i + 1] = Math.max(0, Math.min(255, imageData.data[i + 1] + noise));
-        imageData.data[i + 2] = Math.max(0, Math.min(255, imageData.data[i + 2] + noise));
-    }
-    ctx.putImageData(imageData, 0, 0);
-
-    const texture = new THREE.CanvasTexture(canvas);
-    texture.wrapS = THREE.RepeatWrapping;
-    texture.wrapT = THREE.RepeatWrapping;
-    texture.repeat.set(4, 4);
-    texture.anisotropy = 4;
-    return texture;
-}
-
-function alignCarpetTextureToGrid(texture, mazeWidth, mazeHeight, tileSize, targetCell) {
-    if (!texture?.userData?.hex) {
-        return;
-    }
-
-    const { centerU, centerV } = texture.userData.hex;
-    const repeatX = texture.repeat?.x ?? 1;
-    const repeatY = texture.repeat?.y ?? 1;
-    const width = mazeWidth * tileSize;
-    const height = mazeHeight * tileSize;
-    const targetX = Number.isFinite(targetCell?.column) ? targetCell.column * tileSize : 0;
-    const targetZ = Number.isFinite(targetCell?.row) ? targetCell.row * tileSize : 0;
-    const u = (targetX + tileSize * 0.5) / width;
-    const v = (targetZ + tileSize * 0.5) / height;
-    const rawU = (u * repeatX) % 1;
-    const rawV = (v * repeatY) % 1;
-    const offsetU = (centerU - rawU + 1) % 1;
-    const offsetV = (centerV - rawV + 1) % 1;
-
-    texture.offset.set(offsetU, offsetV);
-    texture.needsUpdate = true;
-}
 
 let wallLampAssets = null;
 
@@ -209,13 +74,13 @@ function getWallLampAssets(tileSize) {
 function getWallTextureForMap(config) {
     if (config.wallTextureType === 'hedge') return createHedgeWallTexture();
     if (config.wallTextureType === 'concrete') return createConcreteWallTexture(256);
-    return createWallTexture(256);
+    return createHotelWallTexture(256);
 }
 
 function getFloorTextureForMap(config) {
     if (config.floorTextureType === 'grass') return createGrassFloorTexture(512);
     if (config.floorTextureType === 'metal') return createMetalFloorTexture(512);
-    return createCarpetFloorTexture(512);
+    return createHotelFloorTexture(512);
 }
 
 function createWallLamp(tileSize, lightColor = 0xffd9a8, lightIntensity = 1.1) {
@@ -415,7 +280,6 @@ export function startGame(mapConfig = MAP_CONFIGS.hotel) {
     scoreElement.className = 'score-pill';
     scoreElement.textContent = 'Pontos: 0';
     document.body.appendChild(scoreElement);
-    const stateElement = null;
 
     const powerTimerElement = document.createElement('div');
     powerTimerElement.className = 'power-timer is-hidden';
@@ -711,7 +575,6 @@ export function startGame(mapConfig = MAP_CONFIGS.hotel) {
         });
     }
 
-    alignCarpetTextureToGrid(floorTexture, mazeWidth, mazeHeight, tileSize, centerMarkerCell);
     if (mapConfig.pointLightIntensity > 0) {
     placeManualWallLamps({
         mazeLayout,
@@ -829,8 +692,6 @@ export function startGame(mapConfig = MAP_CONFIGS.hotel) {
     scene.add(minimapPacman);
     scene.add(pacman3D, pacman2D);
 
-    let lastPlayerX = perspectiveCamera.position.x;
-    let lastPlayerZ = perspectiveCamera.position.z;
     const lastMoveDir = new THREE.Vector3(1, 0, 0);
     let pacman3DYaw = Math.PI;
     let pacman2DYaw = 0;
@@ -857,13 +718,6 @@ export function startGame(mapConfig = MAP_CONFIGS.hotel) {
 
     let activeCamera = perspectiveCamera;
     let activeView = 'perspective';
-
-    function setHudState(message) {
-        if (!stateElement) {
-            return;
-        }
-        stateElement.textContent = message;
-    }
 
     function showPauseView(viewName) {
         if (!pauseRoot) {
@@ -1000,7 +854,6 @@ export function startGame(mapConfig = MAP_CONFIGS.hotel) {
 
     function endGame(result) {
         gameState = 'finished';
-        setHudState('');
         powerModeActive = false;
         powerTimerElement.classList.add('is-hidden');
         pauseRoot?.classList.add('is-hidden');
@@ -1026,8 +879,6 @@ export function startGame(mapConfig = MAP_CONFIGS.hotel) {
     }
 
     setScore(totalScore);
-    setHudState('Colete as moedas e fuja dos fantasmas.');
-
     function activatePerspectiveView() {
         activeCamera = perspectiveCamera;
         activeView = 'perspective';
@@ -1240,9 +1091,7 @@ export function startGame(mapConfig = MAP_CONFIGS.hotel) {
                 deltaSeconds,
                 controls,
                 camera: perspectiveCamera,
-                mazeLayout,
-                tileSize,
-                ghosts
+                mazeLayout
             });
 
             updatePowerTimer(now);
@@ -1359,15 +1208,6 @@ export function startGame(mapConfig = MAP_CONFIGS.hotel) {
             }
         }
 
-        if (activeView === 'orthographic') {
-            orthographicCamera.position.set(
-                orthographicCamera.position.x,
-                orthographicCameraHeight,
-                orthographicCamera.position.z
-            );
-            orthographicCamera.lookAt(mazeCenterX, 0, mazeCenterZ);
-        }
-
         playerSpotlight.position.set(
             perspectiveCamera.position.x,
             playerSpotlight.position.y,
@@ -1392,9 +1232,6 @@ export function startGame(mapConfig = MAP_CONFIGS.hotel) {
             pacman2DHeight,
             perspectiveCamera.position.z
         );
-
-        lastPlayerX = perspectiveCamera.position.x;
-        lastPlayerZ = perspectiveCamera.position.z;
 
         // Pac-Man mouth open/close animation
         const mouthT = Math.abs(Math.sin(clock.elapsedTime * 7));

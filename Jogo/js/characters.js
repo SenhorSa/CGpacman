@@ -376,7 +376,6 @@ function tryMoveGhost(ghost, mazeLayout, tileSize, deltaSeconds, centerMarkerCel
     }
 
     ghost.userData.direction = pickGhostDirection(ghost, mazeLayout, tileSize, directionOptions);
-    updateGhostFaceOrientation(ghost, deltaSeconds);
 }
 
 function collidesWithGhosts(ghosts, nextX, nextZ, playerRadius) {

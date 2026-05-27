@@ -5,7 +5,7 @@ export function saveScore({ score, mapId, mapName, result }) {
     const scores = loadScores();
 
     // Don't register if both differentials (score + result) are identical to an existing entry.
-    const isDuplicate = scores.some(e => e.score === score && e.result === result);
+    const isDuplicate = scores.some(e => e.score === score && e.result === result && e.mapId === mapId);
     if (isDuplicate) {
         return null;
     }

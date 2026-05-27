@@ -51,7 +51,6 @@ function createPacmanDarkDeceptionLayout(rows, columns) {
     carveHorizontal(layout, 10, 10, 16);
     carveHorizontal(layout, 11, 9, 17);
     carveHorizontal(layout, 12, 10, 16);
-        ceiling.position.set(mazeCenterX, wallHeight + 0.02, mazeCenterZ);
     carveVertical(layout, 17, 10, 12);
 
     const tacticalBlockers = [
@@ -332,87 +331,6 @@ export function createMenuMazeLayout(rows, columns) {
 
 function isInsideGrid(layout, row, column) {
     return row >= 0 && row < layout.length && column >= 0 && column < layout[0].length;
-}
-
-function isInsideInnerGrid(layout, row, column) {
-    return row > 0 && row < layout.length - 1 && column > 0 && column < layout[0].length - 1;
-}
-
-function countWalkableNeighbors(layout, row, column) {
-    let walkableCount = 0;
-
-    for (const direction of cardinalDirections) {
-        const nextRow = row + direction.row;
-        const nextColumn = column + direction.column;
-
-        if (isInsideGrid(layout, nextRow, nextColumn) && layout[nextRow][nextColumn] === 0) {
-            walkableCount += 1;
-        }
-    }
-
-    return walkableCount;
-}
-
-function buildPlayableMaze(layout) {
-    const playableLayout = layout.map((row) => [...row]);
-    const maxIterations = playableLayout.length * playableLayout[0].length * 8;
-
-    for (let iteration = 0; iteration < maxIterations; iteration += 1) {
-        const deadEnds = [];
-
-        for (let row = 1; row < playableLayout.length - 1; row += 1) {
-            for (let column = 1; column < playableLayout[row].length - 1; column += 1) {
-                if (playableLayout[row][column] !== 0) {
-                    continue;
-                }
-
-                if (countWalkableNeighbors(playableLayout, row, column) <= 1) {
-                    deadEnds.push({ row, column });
-                }
-            }
-        }
-
-        if (deadEnds.length === 0) {
-            break;
-        }
-
-        for (const deadEnd of deadEnds) {
-            const strongCandidates = [];
-            const fallbackCandidates = [];
-
-            for (const direction of cardinalDirections) {
-                const wallRow = deadEnd.row + direction.row;
-                const wallColumn = deadEnd.column + direction.column;
-
-                if (!isInsideInnerGrid(playableLayout, wallRow, wallColumn) || playableLayout[wallRow][wallColumn] !== 1) {
-                    continue;
-                }
-
-                const beyondRow = deadEnd.row + direction.row * 2;
-                const beyondColumn = deadEnd.column + direction.column * 2;
-
-                if (
-                    isInsideInnerGrid(playableLayout, beyondRow, beyondColumn)
-                    && playableLayout[beyondRow][beyondColumn] === 0
-                ) {
-                    strongCandidates.push({ row: wallRow, column: wallColumn });
-                    continue;
-                }
-
-                if (countWalkableNeighbors(playableLayout, wallRow, wallColumn) >= 1) {
-                    fallbackCandidates.push({ row: wallRow, column: wallColumn });
-                }
-            }
-
-            const selectedCandidate = strongCandidates[0] ?? fallbackCandidates[0];
-
-            if (selectedCandidate) {
-                playableLayout[selectedCandidate.row][selectedCandidate.column] = 0;
-            }
-        }
-    }
-
-    return playableLayout;
 }
 
 export function findSpawnCell(layout) {

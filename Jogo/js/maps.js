@@ -195,337 +195,106 @@ export function createMetalFloorTexture(size = 512) {
     return texture;
 }
 
-export function createFenceWallMaterial() {
-    const material = new THREE.MeshStandardMaterial({
-        color: 0x1e1e24,
-        roughness: 0.35,
-        metalness: 0.65,
-        transparent: true,
-        alphaTest: 0.45,
-        side: THREE.FrontSide,
-        polygonOffset: true,
-        polygonOffsetFactor: -1,
-        polygonOffsetUnits: -1
-    });
+export function createHotelWallTexture(size = 256) {
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
 
-    new THREE.TextureLoader().load('.\\Imagens\\Mapas\\Labirinto\\fence_textura.png', (tex) => {
-        const img = tex.image;
-        const sw = img.width  || 512;
-        const sh = img.height || 512;
-        const canvas = document.createElement('canvas');
-        canvas.width  = sw;
-        canvas.height = sh;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, sw, sh);
-        const id = ctx.getImageData(0, 0, sw, sh);
-        const d = id.data;
-        for (let i = 0; i < d.length; i += 4) {
-            const luma = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
-            // dark pixels = iron bar → opaque steel; light pixels = gap → transparent
-            const isFence = luma < 120;
-            d[i]     = isFence ? 38  : 200;
-            d[i + 1] = isFence ? 36  : 200;
-            d[i + 2] = isFence ? 42  : 200;
-            d[i + 3] = isFence ? 255 : 0;
-        }
-        ctx.putImageData(id, 0, 0);
-        const processed = new THREE.CanvasTexture(canvas);
-        processed.wrapS = THREE.RepeatWrapping;
-        processed.wrapT = THREE.RepeatWrapping;
-        processed.repeat.set(1, 1);
-        processed.anisotropy = 8;
-        material.map = processed;
-        material.needsUpdate = true;
-    });
+    ctx.fillStyle = '#6e0f1a';
+    ctx.fillRect(0, 0, size, size);
 
-    return material;
+    const gradient = ctx.createLinearGradient(0, 0, 0, size);
+    gradient.addColorStop(0, 'rgba(255, 255, 255, 0.10)');
+    gradient.addColorStop(0.35, 'rgba(255, 255, 255, 0.02)');
+    gradient.addColorStop(1, 'rgba(0, 0, 0, 0.18)');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, size, size);
+
+    const imageData = ctx.getImageData(0, 0, size, size);
+    for (let i = 0; i < imageData.data.length; i += 4) {
+        const noise = (Math.random() - 0.5) * 18;
+        imageData.data[i]     = Math.max(0, Math.min(255, imageData.data[i]     + noise));
+        imageData.data[i + 1] = Math.max(0, Math.min(255, imageData.data[i + 1] + noise));
+        imageData.data[i + 2] = Math.max(0, Math.min(255, imageData.data[i + 2] + noise));
+    }
+    ctx.putImageData(imageData, 0, 0);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(2, 1);
+    texture.anisotropy = 4;
+    return texture;
 }
 
-export function buildMansionEnvironment(scene, mazeCenterX, mazeCenterZ, mazeWidth, mazeHeight, tileSize) {
-    const group = new THREE.Group();
-    scene.add(group);
+export function createHotelFloorTexture(size = 512) {
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
 
-    const cx = mazeCenterX;
-    const cz = -7;
+    ctx.fillStyle = '#c07830';
+    ctx.fillRect(0, 0, size, size);
 
-    const matWall = new THREE.MeshStandardMaterial({ color: 0x2e323e, roughness: 0.88, metalness: 0.06 });
-    const matRoof = new THREE.MeshStandardMaterial({ color: 0x11141a, roughness: 0.95, metalness: 0.0 });
-    const matWin  = new THREE.MeshStandardMaterial({
-        color: 0xff8c20,
-        emissive: 0xff5500,
-        emissiveIntensity: 2.0,
-        roughness: 0.1,
-        metalness: 0.0,
-        polygonOffset: true,
-        polygonOffsetFactor: -2,
-        polygonOffsetUnits: -2
-    });
-    const matTrim   = new THREE.MeshStandardMaterial({ color: 0x1a1d26, roughness: 0.8, metalness: 0.14 });
-    const matGround = new THREE.MeshStandardMaterial({ color: 0x162809, roughness: 1.0 });
-    const matPath   = new THREE.MeshStandardMaterial({ color: 0x332d25, roughness: 0.92 });
+    const cols = 4;
+    const rows = 4;
+    const tw = size / cols;
+    const th = size / rows;
 
-    const p = (geo, mat, x, y, z) => {
-        const mesh = new THREE.Mesh(geo, mat);
-        mesh.position.set(cx + x, y, cz + z);
-        group.add(mesh);
-        return mesh;
+    const drawDiamond = (cx, cy, hw, hh) => {
+        ctx.beginPath();
+        ctx.moveTo(cx,      cy - hh);
+        ctx.lineTo(cx + hw, cy     );
+        ctx.lineTo(cx,      cy + hh);
+        ctx.lineTo(cx - hw, cy     );
+        ctx.closePath();
     };
 
-    // ── GROUND FLOOR ─────────────────────────────────────────────────────────
-    p(new THREE.BoxGeometry(18, 3.5, 8), matWall, 0, 1.75, 0);         // main block; south face at z=-3
-    p(new THREE.BoxGeometry(3.0, 3.2, 1.5), matWall, -5.5, 1.6, 4.75); // left bay; south face ≈ z=-1.5
-    p(new THREE.BoxGeometry(3.0, 3.2, 1.5), matWall, 5.5, 1.6, 4.75);  // right bay
-    p(new THREE.BoxGeometry(3.5, 3.5, 5.5), matWall, -11.0, 1.75, -0.5); // left wing
-    p(new THREE.BoxGeometry(3.5, 3.5, 5.5), matWall, 11.0, 1.75, -0.5);  // right wing
+    for (let row = 0; row < rows; row += 1) {
+        for (let col = 0; col < cols; col += 1) {
+            const cx = (col + 0.5) * tw;
+            const cy = (row + 0.5) * th;
 
-    // ── SECOND FLOOR ─────────────────────────────────────────────────────────
-    p(new THREE.BoxGeometry(16, 2.8, 7), matWall, 0, 4.9, 0);
-    p(new THREE.BoxGeometry(2.8, 2.5, 1.0), matWall, -5.5, 4.85, 3.55);
-    p(new THREE.BoxGeometry(2.8, 2.5, 1.0), matWall, 5.5, 4.85, 3.55);
+            drawDiamond(cx, cy, tw * 0.46, th * 0.46);
+            ctx.fillStyle = 'rgba(155, 85, 15, 0.30)';
+            ctx.fill();
+            drawDiamond(cx, cy, tw * 0.46, th * 0.46);
+            ctx.strokeStyle = 'rgba(80, 32, 6, 0.80)';
+            ctx.lineWidth = size / 110;
+            ctx.stroke();
 
-    // ── CENTRAL TOWER ────────────────────────────────────────────────────────
-    p(new THREE.BoxGeometry(4.5, 3.0, 4.5), matWall, 0, 7.8, -0.5);
+            drawDiamond(cx, cy, tw * 0.30, th * 0.30);
+            ctx.fillStyle = 'rgba(240, 180, 70, 0.28)';
+            ctx.fill();
+            drawDiamond(cx, cy, tw * 0.30, th * 0.30);
+            ctx.strokeStyle = 'rgba(80, 32, 6, 0.55)';
+            ctx.lineWidth = size / 220;
+            ctx.stroke();
 
-    // ── ROUND TURRET (left) ──────────────────────────────────────────────────
-    p(new THREE.CylinderGeometry(1.4, 1.6, 7.0, 12), matWall, -9.5, 3.5, 0.5);
-
-    // ── PORCH ────────────────────────────────────────────────────────────────
-    p(new THREE.BoxGeometry(8, 0.2, 2.5), matWall, 0, 0.1, 5.0);           // floor; south edge z=-1.25
-    p(new THREE.BoxGeometry(8.6, 0.22, 2.8), matTrim, 0, 3.55, 5.15);      // roof
-    for (const colX of [-3.5, -1.2, 1.2, 3.5]) {
-        p(new THREE.CylinderGeometry(0.12, 0.14, 3.5, 8), matTrim, colX, 1.75, 6.2); // z=-0.8
-    }
-
-    // ── ROOFS ────────────────────────────────────────────────────────────────
-    // Main pyramid
-    const mainRoof = new THREE.Mesh(new THREE.ConeGeometry(1, 1, 4), matRoof);
-    mainRoof.rotation.y = Math.PI / 4;
-    mainRoof.scale.set(11, 3.5, 6);
-    mainRoof.position.set(cx, 5.25, cz);      // base at y=3.5, tip at y=7.0
-    group.add(mainRoof);
-
-    // Tower pointed roof
-    const towerRoof = new THREE.Mesh(new THREE.ConeGeometry(1, 1, 4), matRoof);
-    towerRoof.rotation.y = Math.PI / 4;
-    towerRoof.scale.set(3.5, 5.5, 3.5);
-    towerRoof.position.set(cx, 12.05, cz - 0.5); // base at y=9.3, tip at y=14.8
-    group.add(towerRoof);
-
-    // Turret cone
-    const turretRoof = new THREE.Mesh(new THREE.ConeGeometry(1.8, 4.0, 12), matRoof);
-    turretRoof.position.set(cx - 9.5, 9.0, cz + 0.5);
-    group.add(turretRoof);
-
-    // Side wing roofs
-    for (const sx of [-11.0, 11.0]) {
-        const wr = new THREE.Mesh(new THREE.ConeGeometry(1, 1, 4), matRoof);
-        wr.rotation.y = Math.PI / 4;
-        wr.scale.set(2.8, 2.5, 4.0);
-        wr.position.set(cx + sx, 4.75, cz - 0.5);
-        group.add(wr);
-    }
-
-    // Bay window micro-roofs
-    for (const bx of [-5.5, 5.5]) {
-        const br = new THREE.Mesh(new THREE.ConeGeometry(1, 1, 4), matRoof);
-        br.rotation.y = Math.PI / 4;
-        br.scale.set(1.7, 1.3, 1.1);
-        br.position.set(cx + bx, 3.85, cz + 4.75);
-        group.add(br);
-    }
-
-    // Dormer (center front)
-    p(new THREE.BoxGeometry(1.5, 1.0, 0.6), matWall, 0, 4.9, 3.0);
-    const dormerRoof = new THREE.Mesh(new THREE.ConeGeometry(1, 1, 4), matRoof);
-    dormerRoof.rotation.y = Math.PI / 4;
-    dormerRoof.scale.set(1.0, 0.9, 0.6);
-    dormerRoof.position.set(cx, 5.5, cz + 3.0);
-    group.add(dormerRoof);
-
-    // ── CHIMNEYS ─────────────────────────────────────────────────────────────
-    for (const [chX, chZ] of [[-4.5, -3.5], [2, -4], [6.5, -2.5]]) {
-        p(new THREE.BoxGeometry(0.65, 3.5, 0.65), matTrim, chX, 5.25, chZ);
-        p(new THREE.BoxGeometry(1.0, 0.28, 1.0), matTrim, chX, 7.14, chZ);
-    }
-
-    // ── SOUTH FACADE WINDOWS ─────────────────────────────────────────────────
-    // Ground floor (main south face at z = cz+4 = -3)
-    for (const wx of [-7, -4.5, -2, 0, 2, 4.5, 7]) {
-        p(new THREE.BoxGeometry(0.62, 0.9, 0.05), matWin, wx, 1.9, 4.06);
-    }
-    // Bay window front faces
-    p(new THREE.BoxGeometry(0.72, 0.88, 0.05), matWin, -5.5, 1.6, 5.56);
-    p(new THREE.BoxGeometry(0.72, 0.88, 0.05), matWin, 5.5, 1.6, 5.56);
-    // Second floor south
-    for (const wx of [-6, -3.5, -1, 1, 3.5, 6]) {
-        p(new THREE.BoxGeometry(0.58, 0.78, 0.05), matWin, wx, 4.9, 3.56);
-    }
-    p(new THREE.BoxGeometry(0.62, 0.72, 0.05), matWin, -5.5, 4.9, 4.06);
-    p(new THREE.BoxGeometry(0.62, 0.72, 0.05), matWin, 5.5, 4.9, 4.06);
-    // Tower south window + dormer
-    p(new THREE.BoxGeometry(0.72, 0.82, 0.05), matWin, 0, 7.85, 1.81);
-    p(new THREE.BoxGeometry(0.5, 0.5, 0.05), matWin, 0, 4.88, 3.32);
-    // East / west side windows
-    for (let i = 0; i < 3; i++) {
-        p(new THREE.BoxGeometry(0.05, 0.85, 0.62), matWin,  9.06, 1.9, -1.5 + i * 2);
-        p(new THREE.BoxGeometry(0.05, 0.85, 0.62), matWin, -9.06, 1.9, -1.5 + i * 2);
-        p(new THREE.BoxGeometry(0.05, 0.75, 0.58), matWin,  8.06, 4.9, -1.5 + i * 2);
-    }
-    // Turret window ring
-    for (let i = 0; i < 6; i++) {
-        const ang = (i / 6) * Math.PI * 2;
-        const tw = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.62, 0.05), matWin);
-        tw.position.set(cx - 9.5 + Math.sin(ang) * 1.5, 3.5, cz + 0.5 + Math.cos(ang) * 1.5);
-        tw.rotation.y = -ang;
-        group.add(tw);
-    }
-
-    // ── WINDOW POINT LIGHTS ───────────────────────────────────────────────────
-    const addLight = (x, y, z, color, intensity, dist) => {
-        const l = new THREE.PointLight(color, intensity, dist);
-        l.position.set(cx + x, y, cz + z);
-        scene.add(l);
-    };
-    addLight(0, 2.2, 4.5, 0xff6010, 2.2, 11);
-    addLight(-5, 2.0, 5.0, 0xff7020, 1.4, 8);
-    addLight(5, 2.0, 5.0, 0xff7020, 1.0, 8);
-    addLight(-4, 5.2, 4.0, 0xff6510, 1.2, 7);
-    addLight(0, 8.5, 1.5, 0xff5000, 0.9, 6);
-    addLight(-9.5, 3.8, 2.0, 0xff6010, 1.2, 7);
-
-    // ── EXTENDED GROUND (north of maze) ──────────────────────────────────────
-    const extGround = new THREE.Mesh(
-        new THREE.PlaneGeometry((mazeWidth + 24) * tileSize, 26),
-        matGround
-    );
-    extGround.rotation.x = -Math.PI / 2;
-    extGround.position.set(cx, 0.006, cz - 6);
-    scene.add(extGround);
-
-    // Stone path from porch toward maze north gate
-    const pathMesh = new THREE.Mesh(new THREE.PlaneGeometry(2.5, 7.5), matPath);
-    pathMesh.rotation.x = -Math.PI / 2;
-    pathMesh.position.set(cx, 0.008, cz + 7.25);
-    scene.add(pathMesh);
-
-    return group;
-}
-
-export function buildLabyrinthFence(scene, mazeRows, mazeColumns, tileSize, wallHeight) {
-    const group = new THREE.Group();
-    scene.add(group);
-
-    const ironMat  = new THREE.MeshStandardMaterial({ color: 0x252830, roughness: 0.50, metalness: 0.75 });
-    const stoneMat = new THREE.MeshStandardMaterial({ color: 0x52576e, roughness: 0.88, metalness: 0.04 });
-    const backMat  = new THREE.MeshStandardMaterial({
-        color: 0x1e2028, roughness: 0.80, metalness: 0.20,
-        side: THREE.FrontSide,
-        polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 2
-    });
-
-    const W = tileSize;
-    const H = wallHeight;
-
-    const barR      = W * 0.030;
-    const barH      = H * 0.84;
-    const tipR      = W * 0.042;
-    const tipH      = H * 0.22;
-    const rThick    = W * 0.048;
-    const rDepth    = W * 0.042;
-    const pSide     = W * 0.22;
-    const pH        = H * 1.32;
-    const cSide     = W * 0.30;
-    const cH        = W * 0.14;
-    const cTipR     = cSide * 0.36;
-    const cTipH     = W * 0.26;
-
-    const barGeo    = new THREE.CylinderGeometry(barR, barR * 0.78, barH, 6);
-    const tipGeo    = new THREE.ConeGeometry(tipR, tipH, 4);
-    const pillarGeo = new THREE.BoxGeometry(pSide, pH, pSide);
-    const capGeo    = new THREE.BoxGeometry(cSide, cH, cSide);
-    const capTipGeo = new THREE.ConeGeometry(cTipR, cTipH, 4);
-
-    const put = (geo, mat, x, y, z, ry = 0) => {
-        const m = new THREE.Mesh(geo, mat);
-        m.position.set(x, y, z);
-        m.rotation.y = ry;
-        group.add(m);
-    };
-
-    const addBar = (x, z) => {
-        put(barGeo, ironMat, x, H * 0.10 + barH * 0.5, z);
-        put(tipGeo, ironMat, x, H * 0.10 + barH + tipH * 0.5, z, Math.PI / 4);
-    };
-
-    const addPillar = (x, z) => {
-        put(pillarGeo, stoneMat, x, pH * 0.5, z);
-        put(capGeo, stoneMat, x, pH + cH * 0.5, z);
-        put(capTipGeo, stoneMat, x, pH + cH + cTipH * 0.5, z, Math.PI / 4);
-    };
-
-    const maxRow = mazeRows  - 1;
-    const maxCol = mazeColumns - 1;
-    const pEvery = 4;   // pillar every N tiles
-    const bpt    = 3;   // iron bars per tile between pillars
-
-    const addBack = (w, h, x, y, z, ry) => {
-        const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), backMat);
-        m.position.set(x, y, z);
-        m.rotation.y = ry;
-        group.add(m);
-    };
-
-    const buildNS = (rowZ) => {
-        const z    = rowZ * tileSize;
-        const len  = (maxCol + 1) * tileSize;
-        const midX = maxCol * tileSize * 0.5;
-        // backing panel facing inward (FrontSide only visible from maze interior)
-        const inwardRY = rowZ === 0 ? 0 : Math.PI;
-        addBack(len, H, midX, H * 0.5, z, inwardRY);
-        put(new THREE.BoxGeometry(len, rThick, rDepth), ironMat, midX, H * 0.10, z);
-        put(new THREE.BoxGeometry(len, rThick, rDepth), ironMat, midX, H * 0.78, z);
-        for (let col = 0; col <= maxCol; col++) {
-            const x = col * tileSize;
-            if (col % pEvery === 0) {
-                addPillar(x, z);
-            } else {
-                const sp = tileSize / (bpt + 1);
-                for (let b = 1; b <= bpt; b++) {
-                    addBar(x - tileSize * 0.5 + sp * b, z);
-                }
-            }
+            drawDiamond(cx, cy, tw * 0.10, th * 0.10);
+            ctx.fillStyle = 'rgba(80, 32, 6, 0.50)';
+            ctx.fill();
         }
-    };
+    }
 
-    const buildEW = (colX) => {
-        const x    = colX * tileSize;
-        const len  = (maxRow + 1) * tileSize;
-        const midZ = maxRow * tileSize * 0.5;
-        // backing panel facing inward
-        const inwardRY = colX === 0 ? -Math.PI / 2 : Math.PI / 2;
-        addBack(len, H, x, H * 0.5, midZ, inwardRY);
-        put(new THREE.BoxGeometry(rDepth, rThick, len), ironMat, x, H * 0.10, midZ);
-        put(new THREE.BoxGeometry(rDepth, rThick, len), ironMat, x, H * 0.78, midZ);
-        // skip row 0 and maxRow — corners already have pillars from buildNS
-        for (let row = 1; row < maxRow; row++) {
-            const z = row * tileSize;
-            if (row % pEvery === 0) {
-                addPillar(x, z);
-            } else {
-                const sp = tileSize / (bpt + 1);
-                for (let b = 1; b <= bpt; b++) {
-                    addBar(x, z - tileSize * 0.5 + sp * b);
-                }
-            }
-        }
-    };
+    const imageData = ctx.getImageData(0, 0, size, size);
+    for (let i = 0; i < imageData.data.length; i += 4) {
+        const noise = (Math.random() - 0.5) * 16;
+        imageData.data[i]     = Math.max(0, Math.min(255, imageData.data[i]     + noise));
+        imageData.data[i + 1] = Math.max(0, Math.min(255, imageData.data[i + 1] + noise));
+        imageData.data[i + 2] = Math.max(0, Math.min(255, imageData.data[i + 2] + noise));
+    }
+    ctx.putImageData(imageData, 0, 0);
 
-    buildNS(0);
-    buildNS(maxRow);
-    buildEW(0);
-    buildEW(maxCol);
-
-    return group;
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(4, 4);
+    texture.anisotropy = 4;
+    return texture;
 }
 
 export function drawMapThumbnail(canvas, config) {
