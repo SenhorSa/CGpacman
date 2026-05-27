@@ -8,6 +8,7 @@ import {
 } from './characters.js';
 import { createMaze, getCenterMarkerCell, getMazeData } from './maze.js';
 import { bindLightNumberKeys, registerLight } from './lights.js';
+import { MAP_CONFIGS, drawMapThumbnail } from './maps.js';
 
 function createWallTexture(size = 256) {
 	const canvas = document.createElement('canvas');
@@ -18,68 +19,23 @@ function createWallTexture(size = 256) {
 		return null;
 	}
 
-	ctx.fillStyle = '#820101';
+	// Deep burgundy/wine plaster base
+	ctx.fillStyle = '#6e0f1a';
 	ctx.fillRect(0, 0, size, size);
 
+	// Subtle vertical gradient: slightly lighter at top, darker at bottom
 	const gradient = ctx.createLinearGradient(0, 0, 0, size);
-	gradient.addColorStop(0, 'rgba(255, 255, 255, 0.06)');
-	gradient.addColorStop(1, 'rgba(0, 0, 0, 0.22)');
+	gradient.addColorStop(0, 'rgba(255, 255, 255, 0.10)');
+	gradient.addColorStop(0.35, 'rgba(255, 255, 255, 0.02)');
+	gradient.addColorStop(1, 'rgba(0, 0, 0, 0.18)');
 	ctx.fillStyle = gradient;
 	ctx.fillRect(0, 0, size, size);
 
-	const panelCount = 5;
-	const panelWidth = Math.ceil(size / panelCount);
-	for (let i = 0; i < panelCount; i += 1) {
-		const x = i * panelWidth;
-		ctx.fillStyle = `rgba(255, 255, 255, ${0.04 + Math.random() * 0.05})`;
-		ctx.fillRect(x + 2, 0, panelWidth - 4, size);
-
-		ctx.fillStyle = 'rgba(28, 22, 18, 0.55)';
-		ctx.fillRect(x, 0, 2, size);
-		ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
-		ctx.fillRect(x + panelWidth - 2, 0, 2, size);
-	}
-
-	ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
-	for (let y = 0; y < size; y += 12) {
-		ctx.fillRect(0, y, size, 1);
-	}
-
-	ctx.fillStyle = 'rgba(53, 45, 36, 0.45)';
-	for (let i = 0; i < 20; i += 1) {
-		const stainX = Math.random() * size;
-		const stainY = Math.random() * size;
-		const stainRadius = 10 + Math.random() * 26;
-		ctx.beginPath();
-		ctx.ellipse(stainX, stainY, stainRadius, stainRadius * 0.65, 0, 0, Math.PI * 2);
-		ctx.fill();
-	}
-
-	ctx.fillStyle = 'rgba(62, 79, 60, 0.32)';
-	for (let i = 0; i < 14; i += 1) {
-		const moldX = Math.random() * size;
-		const moldY = Math.random() * size;
-		const moldRadius = 6 + Math.random() * 18;
-		ctx.beginPath();
-		ctx.ellipse(moldX, moldY, moldRadius, moldRadius * 0.8, 0, 0, Math.PI * 2);
-		ctx.fill();
-	}
-
-	ctx.strokeStyle = 'rgba(27, 22, 18, 0.6)';
-	ctx.lineWidth = 1;
-	for (let i = 0; i < 10; i += 1) {
-		const startX = Math.random() * size;
-		const startY = Math.random() * size;
-		ctx.beginPath();
-		ctx.moveTo(startX, startY);
-		ctx.lineTo(startX + Math.random() * 50 - 25, startY + Math.random() * 40 - 20);
-		ctx.stroke();
-	}
-
+	// Fine plaster grain noise
 	const imageData = ctx.getImageData(0, 0, size, size);
 	for (let i = 0; i < imageData.data.length; i += 4) {
-		const noise = (Math.random() - 0.5) * 30;
-		imageData.data[i] = Math.max(0, Math.min(255, imageData.data[i] + noise));
+		const noise = (Math.random() - 0.5) * 18;
+		imageData.data[i]     = Math.max(0, Math.min(255, imageData.data[i]     + noise));
 		imageData.data[i + 1] = Math.max(0, Math.min(255, imageData.data[i + 1] + noise));
 		imageData.data[i + 2] = Math.max(0, Math.min(255, imageData.data[i + 2] + noise));
 	}
@@ -102,55 +58,59 @@ function createCarpetFloorTexture(size = 512) {
 		return null;
 	}
 
-	ctx.fillStyle = '#c7ab6b';
+	// Warm amber/gold carpet base (hotel corridor palette)
+	ctx.fillStyle = '#c07830';
 	ctx.fillRect(0, 0, size, size);
 
-	const hexRadius = size / 12;
-	const hexHeight = Math.sqrt(3) * hexRadius;
-	const stepX = hexRadius * 1.5;
-	const stepY = hexHeight;
-	const innerRadius = hexRadius * 0.62;
-	const coreRadius = hexRadius * 0.35;
+	const cols = 4;
+	const rows = 4;
+	const tw = size / cols;
+	const th = size / rows;
 
-	const drawHex = (cx, cy, radius, strokeStyle, lineWidth) => {
-		ctx.strokeStyle = strokeStyle;
-		ctx.lineWidth = lineWidth;
+	const drawDiamond = (cx, cy, hw, hh) => {
 		ctx.beginPath();
-		for (let i = 0; i < 6; i += 1) {
-			const angle = Math.PI / 6 + i * (Math.PI / 3);
-			const x = cx + Math.cos(angle) * radius;
-			const y = cy + Math.sin(angle) * radius;
-			if (i === 0) {
-				ctx.moveTo(x, y);
-			} else {
-				ctx.lineTo(x, y);
-			}
-		}
+		ctx.moveTo(cx,      cy - hh);
+		ctx.lineTo(cx + hw, cy     );
+		ctx.lineTo(cx,      cy + hh);
+		ctx.lineTo(cx - hw, cy     );
 		ctx.closePath();
-		ctx.stroke();
 	};
 
-	for (let col = -2; col < size / stepX + 2; col += 1) {
-		const x = col * stepX;
-		const offsetY = col % 2 === 0 ? 0 : stepY / 2;
-		for (let row = -2; row < size / stepY + 2; row += 1) {
-			const y = row * stepY + offsetY;
-			const centerX = x + hexRadius;
-			const centerY = y + hexHeight / 2;
-			if (centerX < -hexRadius || centerX > size + hexRadius || centerY < -hexHeight || centerY > size + hexHeight) {
-				continue;
-			}
+	for (let row = 0; row < rows; row += 1) {
+		for (let col = 0; col < cols; col += 1) {
+			const cx = (col + 0.5) * tw;
+			const cy = (row + 0.5) * th;
 
-			drawHex(centerX, centerY, hexRadius, 'rgba(94, 66, 28, 0.55)', 2);
-			drawHex(centerX, centerY, innerRadius, 'rgba(255, 255, 255, 0.18)', 1);
-			drawHex(centerX, centerY, coreRadius, 'rgba(94, 66, 28, 0.35)', 1);
+			// Outer diamond — darker rim fill
+			drawDiamond(cx, cy, tw * 0.46, th * 0.46);
+			ctx.fillStyle = 'rgba(155, 85, 15, 0.30)';
+			ctx.fill();
+			drawDiamond(cx, cy, tw * 0.46, th * 0.46);
+			ctx.strokeStyle = 'rgba(80, 32, 6, 0.80)';
+			ctx.lineWidth = size / 110;
+			ctx.stroke();
+
+			// Middle diamond — lighter gold accent
+			drawDiamond(cx, cy, tw * 0.30, th * 0.30);
+			ctx.fillStyle = 'rgba(240, 180, 70, 0.28)';
+			ctx.fill();
+			drawDiamond(cx, cy, tw * 0.30, th * 0.30);
+			ctx.strokeStyle = 'rgba(80, 32, 6, 0.55)';
+			ctx.lineWidth = size / 220;
+			ctx.stroke();
+
+			// Inner center diamond — dark accent
+			drawDiamond(cx, cy, tw * 0.10, th * 0.10);
+			ctx.fillStyle = 'rgba(80, 32, 6, 0.50)';
+			ctx.fill();
 		}
 	}
 
+	// Fine carpet fibre noise
 	const imageData = ctx.getImageData(0, 0, size, size);
 	for (let i = 0; i < imageData.data.length; i += 4) {
-		const noise = (Math.random() - 0.5) * 18;
-		imageData.data[i] = Math.max(0, Math.min(255, imageData.data[i] + noise));
+		const noise = (Math.random() - 0.5) * 16;
+		imageData.data[i]     = Math.max(0, Math.min(255, imageData.data[i]     + noise));
 		imageData.data[i + 1] = Math.max(0, Math.min(255, imageData.data[i + 1] + noise));
 		imageData.data[i + 2] = Math.max(0, Math.min(255, imageData.data[i + 2] + noise));
 	}
@@ -159,7 +119,7 @@ function createCarpetFloorTexture(size = 512) {
 	const texture = new THREE.CanvasTexture(canvas);
 	texture.wrapS = THREE.RepeatWrapping;
 	texture.wrapT = THREE.RepeatWrapping;
-	texture.repeat.set(3, 3);
+	texture.repeat.set(4, 4);
 	texture.anisotropy = 4;
 	return texture;
 }
@@ -220,24 +180,41 @@ function hydrateScoreList() {
 }
 
 function startNewGame() {
-	startGame();
-	menuRoot?.classList.add('is-hidden');
+	showView('map-select');
 }
 
-function autoStartIfRequested() {
-	if (!menuRoot) {
-		return false;
+function initMapSelect() {
+	const carousel = document.querySelector('[data-view="map-select"] .map-carousel');
+	if (!carousel) {
+		return;
 	}
 
-	const shouldAutoStart = sessionStorage.getItem('pacman3d_autostart');
-	if (!shouldAutoStart) {
-		return false;
-	}
+	for (const config of Object.values(MAP_CONFIGS)) {
+		const card = document.createElement('div');
+		card.className = 'map-card';
 
-	sessionStorage.removeItem('pacman3d_autostart');
-	menuRoot.classList.add('is-hidden');
-	startNewGame();
-	return true;
+		const thumb = document.createElement('canvas');
+		thumb.width = 220;
+		thumb.height = 140;
+		drawMapThumbnail(thumb, config);
+
+		const nameEl = document.createElement('h3');
+		nameEl.textContent = config.name;
+
+		const descEl = document.createElement('p');
+		descEl.textContent = config.description;
+
+		const enemyEl = document.createElement('span');
+		enemyEl.className = 'map-card__enemy';
+		enemyEl.textContent = config.enemyLabel;
+
+		card.append(thumb, nameEl, descEl, enemyEl);
+		card.addEventListener('click', () => {
+			startGame(config);
+			menuRoot?.classList.add('is-hidden');
+		});
+		carousel.appendChild(card);
+	}
 }
 
 startButton?.addEventListener('click', startNewGame);
@@ -248,9 +225,8 @@ scoresButton?.addEventListener('click', () => {
 controlsButton?.addEventListener('click', () => showView('controls'));
 backButton?.addEventListener('click', () => showView('main'));
 
-if (!autoStartIfRequested()) {
-	showView('main');
-}
+showView('main');
+initMapSelect();
 
 function setupMenuMazeBackground() {
 	if (!mazeCanvasA || !mazeCanvasB) {

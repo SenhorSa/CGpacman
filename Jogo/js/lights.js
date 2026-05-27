@@ -11,14 +11,24 @@ const fixedOrder = [
 
 const lightRegistry = new Map();
 const lightStates = new Map();
+const originalIntensities = new Map();
 
 function applyLightStateByKey(key) {
     const light = lightRegistry.get(key);
     if (!light) {
         return;
     }
-    const isEnabled = lightStates.get(key) !== false;
-    light.visible = lightsEnabled && isEnabled;
+    const isEnabled = lightsEnabled && lightStates.get(key) !== false;
+
+    // Use intensity=0 instead of visible=false to avoid GLSL shader recompilation.
+    // Setting visible=false changes NUM_DIR_LIGHTS / NUM_POINT_LIGHTS defines and
+    // forces Three.js to recompile all shaders, causing a noticeable freeze.
+    if (typeof light.intensity === 'number') {
+        light.intensity = isEnabled ? (originalIntensities.get(key) ?? 1) : 0;
+    } else {
+        // Groups (e.g. gamePointLights) don't have intensity — use visibility.
+        light.visible = isEnabled;
+    }
 }
 
 export function registerLight(key, light) {
@@ -27,6 +37,9 @@ export function registerLight(key, light) {
     }
 
     lightRegistry.set(key, light);
+    if (typeof light.intensity === 'number') {
+        originalIntensities.set(key, light.intensity);
+    }
     if (!lightStates.has(key)) {
         lightStates.set(key, true);
     }

@@ -279,11 +279,6 @@
             pointer-events: none;
         }
 
-        .autostart-game .menu-root {
-            opacity: 0;
-            pointer-events: none;
-        }
-
         .menu-panel {
             position: relative;
             width: min(92vw, 560px);
@@ -511,6 +506,76 @@
             font-size: 0.98rem;
         }
 
+        .map-select-panel {
+            width: min(96vw, 860px);
+            max-height: 85vh;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255,255,255,0.12) transparent;
+        }
+
+        .map-carousel {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+            width: 100%;
+        }
+
+        .map-card {
+            border: 1px solid var(--menu-border);
+            border-radius: 14px;
+            overflow: hidden;
+            cursor: pointer;
+            background: rgba(255, 255, 255, 0.03);
+            transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .map-card:hover {
+            transform: translateY(-3px);
+            border-color: rgba(250, 204, 21, 0.55);
+            background: rgba(250, 204, 21, 0.06);
+        }
+
+        .map-card canvas {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        .map-card h3 {
+            margin: 10px 12px 4px;
+            font-family: "Chakra Petch", "Segoe UI", sans-serif;
+            font-size: 1rem;
+            color: var(--menu-ink);
+        }
+
+        .map-card p {
+            margin: 0 12px 8px;
+            font-size: 0.82rem;
+            color: var(--menu-subtle);
+            line-height: 1.4;
+            flex: 1;
+        }
+
+        .map-card__enemy {
+            display: inline-block;
+            margin: 0 12px 12px;
+            font-size: 0.75rem;
+            padding: 3px 8px;
+            border-radius: 999px;
+            background: rgba(250, 204, 21, 0.12);
+            color: var(--menu-accent);
+            border: 1px solid rgba(250, 204, 21, 0.22);
+        }
+
+        @media (max-width: 700px) {
+            .map-carousel {
+                grid-template-columns: 1fr;
+            }
+        }
+
         @media (max-width: 600px) {
             .menu-panel {
                 padding: 24px;
@@ -527,11 +592,6 @@
     <div id="minimap" class="minimap">
         <canvas id="minimap-canvas" aria-label="Mini-mapa" role="img"></canvas>
     </div>
-    <script>
-        if (sessionStorage.getItem('pacman3d_autostart')) {
-            document.documentElement.classList.add('autostart-game');
-        }
-    </script>
     <div id="menu-root" class="menu-root">
         <canvas id="menu-maze-canvas-a" class="menu-maze-canvas" aria-hidden="true"></canvas>
         <canvas id="menu-maze-canvas-b" class="menu-maze-canvas" aria-hidden="true"></canvas>
@@ -556,6 +616,11 @@
             </div>
             <ol id="score-list" class="score-list"></ol>
             <p id="score-empty" class="menu-subtitle">Sem recordes ainda. Joga uma partida para guardar pontuacoes.</p>
+        </section>
+
+        <section class="menu-panel map-select-panel is-hidden" data-view="map-select">
+            <h1 class="menu-title">Escolhe o Mapa</h1>
+            <div class="map-carousel"></div>
         </section>
 
         <section class="menu-panel is-hidden" data-view="controls">

@@ -2,6 +2,13 @@ import * as THREE from 'three';
 import { createMaze, getCenterMarkerCell, getMazeData } from './maze.js';
 import { bindLightNumberKeys, registerLight } from './lights.js';
 import {
+    MAP_CONFIGS,
+    createHedgeWallTexture,
+    createGrassFloorTexture,
+    createConcreteWallTexture,
+    createMetalFloorTexture
+} from './maps.js';
+import {
     collectCoins,
     createCoins,
     createGhosts,
@@ -26,68 +33,23 @@ function createWallTexture(size = 256) {
         return null;
     }
 
-    ctx.fillStyle = '#890509';
+    // Deep burgundy/wine plaster base
+    ctx.fillStyle = '#6e0f1a';
     ctx.fillRect(0, 0, size, size);
 
+    // Subtle vertical gradient: slightly lighter at top (ceiling bounce light), darker at bottom
     const gradient = ctx.createLinearGradient(0, 0, 0, size);
-    gradient.addColorStop(0, 'rgba(255, 255, 255, 0.06)');
-    gradient.addColorStop(1, 'rgba(0, 0, 0, 0.22)');
+    gradient.addColorStop(0, 'rgba(255, 255, 255, 0.10)');
+    gradient.addColorStop(0.35, 'rgba(255, 255, 255, 0.02)');
+    gradient.addColorStop(1, 'rgba(0, 0, 0, 0.18)');
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, size, size);
 
-    const panelCount = 5;
-    const panelWidth = Math.ceil(size / panelCount);
-    for (let i = 0; i < panelCount; i += 1) {
-        const x = i * panelWidth;
-        ctx.fillStyle = `rgba(255, 255, 255, ${0.04 + Math.random() * 0.05})`;
-        ctx.fillRect(x + 2, 0, panelWidth - 4, size);
-
-        ctx.fillStyle = 'rgba(28, 22, 18, 0.55)';
-        ctx.fillRect(x, 0, 2, size);
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
-        ctx.fillRect(x + panelWidth - 2, 0, 2, size);
-    }
-
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
-    for (let y = 0; y < size; y += 12) {
-        ctx.fillRect(0, y, size, 1);
-    }
-
-    ctx.fillStyle = 'rgba(53, 45, 36, 0.45)';
-    for (let i = 0; i < 20; i += 1) {
-        const stainX = Math.random() * size;
-        const stainY = Math.random() * size;
-        const stainRadius = 10 + Math.random() * 26;
-        ctx.beginPath();
-        ctx.ellipse(stainX, stainY, stainRadius, stainRadius * 0.65, 0, 0, Math.PI * 2);
-        ctx.fill();
-    }
-
-    ctx.fillStyle = 'rgba(62, 79, 60, 0.32)';
-    for (let i = 0; i < 14; i += 1) {
-        const moldX = Math.random() * size;
-        const moldY = Math.random() * size;
-        const moldRadius = 6 + Math.random() * 18;
-        ctx.beginPath();
-        ctx.ellipse(moldX, moldY, moldRadius, moldRadius * 0.8, 0, 0, Math.PI * 2);
-        ctx.fill();
-    }
-
-    ctx.strokeStyle = 'rgba(27, 22, 18, 0.6)';
-    ctx.lineWidth = 1;
-    for (let i = 0; i < 10; i += 1) {
-        const startX = Math.random() * size;
-        const startY = Math.random() * size;
-        ctx.beginPath();
-        ctx.moveTo(startX, startY);
-        ctx.lineTo(startX + Math.random() * 50 - 25, startY + Math.random() * 40 - 20);
-        ctx.stroke();
-    }
-
+    // Fine plaster grain noise
     const imageData = ctx.getImageData(0, 0, size, size);
     for (let i = 0; i < imageData.data.length; i += 4) {
-        const noise = (Math.random() - 0.5) * 30;
-        imageData.data[i] = Math.max(0, Math.min(255, imageData.data[i] + noise));
+        const noise = (Math.random() - 0.5) * 18;
+        imageData.data[i]     = Math.max(0, Math.min(255, imageData.data[i]     + noise));
         imageData.data[i + 1] = Math.max(0, Math.min(255, imageData.data[i + 1] + noise));
         imageData.data[i + 2] = Math.max(0, Math.min(255, imageData.data[i + 2] + noise));
     }
@@ -110,55 +72,59 @@ function createCarpetFloorTexture(size = 512) {
         return null;
     }
 
-    ctx.fillStyle = '#bb8f29';
+    // Warm amber/gold carpet base (hotel corridor palette)
+    ctx.fillStyle = '#c07830';
     ctx.fillRect(0, 0, size, size);
 
-    const hexRadius = size / 12;
-    const hexHeight = Math.sqrt(3) * hexRadius;
-    const stepX = hexRadius * 1.5;
-    const stepY = hexHeight;
-    const innerRadius = hexRadius * 0.62;
-    const coreRadius = hexRadius * 0.35;
+    const cols = 4;
+    const rows = 4;
+    const tw = size / cols;
+    const th = size / rows;
 
-    const drawHex = (cx, cy, radius, strokeStyle, lineWidth) => {
-        ctx.strokeStyle = strokeStyle;
-        ctx.lineWidth = lineWidth;
+    const drawDiamond = (cx, cy, hw, hh) => {
         ctx.beginPath();
-        for (let i = 0; i < 6; i += 1) {
-            const angle = Math.PI / 6 + i * (Math.PI / 3);
-            const x = cx + Math.cos(angle) * radius;
-            const y = cy + Math.sin(angle) * radius;
-            if (i === 0) {
-                ctx.moveTo(x, y);
-            } else {
-                ctx.lineTo(x, y);
-            }
-        }
+        ctx.moveTo(cx,      cy - hh);
+        ctx.lineTo(cx + hw, cy     );
+        ctx.lineTo(cx,      cy + hh);
+        ctx.lineTo(cx - hw, cy     );
         ctx.closePath();
-        ctx.stroke();
     };
 
-    for (let col = -2; col < size / stepX + 2; col += 1) {
-        const x = col * stepX;
-        const offsetY = col % 2 === 0 ? 0 : stepY / 2;
-        for (let row = -2; row < size / stepY + 2; row += 1) {
-            const y = row * stepY + offsetY;
-            const centerX = x + hexRadius;
-            const centerY = y + hexHeight / 2;
-            if (centerX < -hexRadius || centerX > size + hexRadius || centerY < -hexHeight || centerY > size + hexHeight) {
-                continue;
-            }
+    for (let row = 0; row < rows; row += 1) {
+        for (let col = 0; col < cols; col += 1) {
+            const cx = (col + 0.5) * tw;
+            const cy = (row + 0.5) * th;
 
-            drawHex(centerX, centerY, hexRadius, 'rgba(94, 66, 28, 0.55)', 2);
-            drawHex(centerX, centerY, innerRadius, 'rgba(255, 255, 255, 0.18)', 1);
-            drawHex(centerX, centerY, coreRadius, 'rgba(94, 66, 28, 0.35)', 1);
+            // Outer diamond — darker rim fill
+            drawDiamond(cx, cy, tw * 0.46, th * 0.46);
+            ctx.fillStyle = 'rgba(155, 85, 15, 0.30)';
+            ctx.fill();
+            drawDiamond(cx, cy, tw * 0.46, th * 0.46);
+            ctx.strokeStyle = 'rgba(80, 32, 6, 0.80)';
+            ctx.lineWidth = size / 110;
+            ctx.stroke();
+
+            // Middle diamond — lighter gold accent
+            drawDiamond(cx, cy, tw * 0.30, th * 0.30);
+            ctx.fillStyle = 'rgba(240, 180, 70, 0.28)';
+            ctx.fill();
+            drawDiamond(cx, cy, tw * 0.30, th * 0.30);
+            ctx.strokeStyle = 'rgba(80, 32, 6, 0.55)';
+            ctx.lineWidth = size / 220;
+            ctx.stroke();
+
+            // Inner center diamond — dark accent
+            drawDiamond(cx, cy, tw * 0.10, th * 0.10);
+            ctx.fillStyle = 'rgba(80, 32, 6, 0.50)';
+            ctx.fill();
         }
     }
 
+    // Fine carpet fibre noise
     const imageData = ctx.getImageData(0, 0, size, size);
     for (let i = 0; i < imageData.data.length; i += 4) {
-        const noise = (Math.random() - 0.5) * 18;
-        imageData.data[i] = Math.max(0, Math.min(255, imageData.data[i] + noise));
+        const noise = (Math.random() - 0.5) * 16;
+        imageData.data[i]     = Math.max(0, Math.min(255, imageData.data[i]     + noise));
         imageData.data[i + 1] = Math.max(0, Math.min(255, imageData.data[i + 1] + noise));
         imageData.data[i + 2] = Math.max(0, Math.min(255, imageData.data[i + 2] + noise));
     }
@@ -167,13 +133,8 @@ function createCarpetFloorTexture(size = 512) {
     const texture = new THREE.CanvasTexture(canvas);
     texture.wrapS = THREE.RepeatWrapping;
     texture.wrapT = THREE.RepeatWrapping;
-    texture.repeat.set(3, 3);
+    texture.repeat.set(4, 4);
     texture.anisotropy = 4;
-    texture.userData.hex = {
-        size,
-        centerU: hexRadius / size,
-        centerV: (hexHeight * 0.5) / size
-    };
     return texture;
 }
 
@@ -207,40 +168,136 @@ function getWallLampAssets(tileSize) {
         return wallLampAssets;
     }
 
+    const s = tileSize;
     wallLampAssets = {
         tileSize,
-        baseGeometry: new THREE.BoxGeometry(tileSize * 0.18, tileSize * 0.22, tileSize * 0.06),
-        shadeGeometry: new THREE.CylinderGeometry(tileSize * 0.05, tileSize * 0.07, tileSize * 0.12, 8, 1, true),
-        bulbGeometry: new THREE.SphereGeometry(tileSize * 0.04, 8, 6),
-        baseMaterial: new THREE.MeshStandardMaterial({ color: 0x5b3d1a, roughness: 0.7, metalness: 0.05 }),
-        shadeMaterial: new THREE.MeshStandardMaterial({ color: 0xdec48a, roughness: 0.8, metalness: 0.0, side: THREE.DoubleSide }),
-        bulbMaterial: new THREE.MeshStandardMaterial({ color: 0xfff1c1, emissive: 0xffd57a, emissiveIntensity: 0.6 })
+        // Flat backing plate on wall
+        plateGeometry:  new THREE.BoxGeometry(s * 0.12, s * 0.18, s * 0.03),
+        // Short arm (rotated to point in +Z)
+        armGeometry:    new THREE.CylinderGeometry(s * 0.018, s * 0.024, s * 0.06, 8),
+        // Hexagonal cup/neck connecting arm to lantern body
+        cupGeometry:    new THREE.CylinderGeometry(s * 0.040, s * 0.028, s * 0.05, 6),
+        // Hexagonal collar rings (top and bottom of body)
+        collarGeometry: new THREE.CylinderGeometry(s * 0.063, s * 0.063, s * 0.013, 6),
+        // Hexagonal glass body (open prism, transparent)
+        glassGeometry:  new THREE.CylinderGeometry(s * 0.055, s * 0.055, s * 0.14, 6, 1, true),
+        // Thin vertical edge bar (one geometry, placed at each of the 6 hex corners)
+        edgeGeometry:   new THREE.CylinderGeometry(s * 0.007, s * 0.007, s * 0.14, 6),
+        // Hexagonal pyramid cap (tip at top, radiusTop=0)
+        capGeometry:    new THREE.CylinderGeometry(0, s * 0.064, s * 0.065, 6),
+        // Small decorative finial sphere at very top
+        finialGeometry: new THREE.SphereGeometry(s * 0.018, 8, 6),
+        // Edison bulb inside
+        bulbGeometry:   new THREE.SphereGeometry(s * 0.028, 10, 7),
+
+        metalMaterial: new THREE.MeshStandardMaterial({
+            color: 0x3a2510, roughness: 0.55, metalness: 0.45
+        }),
+        glassMaterial: new THREE.MeshStandardMaterial({
+            color: 0xfff3d0, roughness: 0.05, metalness: 0.0,
+            transparent: true, opacity: 0.25, side: THREE.DoubleSide
+        }),
+        bulbMaterial: new THREE.MeshStandardMaterial({
+            color: 0xfff1c1, emissive: 0xffb347, emissiveIntensity: 1.4
+        }),
     };
 
     return wallLampAssets;
 }
 
-function createWallLamp(tileSize) {
+function getWallTextureForMap(config) {
+    if (config.wallTextureType === 'hedge') return createHedgeWallTexture();
+    if (config.wallTextureType === 'concrete') return createConcreteWallTexture(256);
+    return createWallTexture(256);
+}
+
+function getFloorTextureForMap(config) {
+    if (config.floorTextureType === 'grass') return createGrassFloorTexture(512);
+    if (config.floorTextureType === 'metal') return createMetalFloorTexture(512);
+    return createCarpetFloorTexture(512);
+}
+
+function createWallLamp(tileSize, lightColor = 0xffd9a8, lightIntensity = 1.1) {
     const assets = getWallLampAssets(tileSize);
+    const s = tileSize;
     const group = new THREE.Group();
 
-    const base = new THREE.Mesh(assets.baseGeometry, assets.baseMaterial);
-    base.position.z = tileSize * 0.03;
+    // --- Backing plate (flat against wall) ---
+    const plate = new THREE.Mesh(assets.plateGeometry, assets.metalMaterial);
+    plate.position.set(0, 0, s * 0.015);
+    group.add(plate);
 
-    const shade = new THREE.Mesh(assets.shadeGeometry, assets.shadeMaterial);
-    shade.position.z = tileSize * 0.08;
+    // --- Short arm (CylinderGeometry along Y → rotation.x = π/2 → points in +Z) ---
+    const arm = new THREE.Mesh(assets.armGeometry, assets.metalMaterial);
+    arm.rotation.x = Math.PI / 2;
+    arm.position.set(0, -s * 0.025, s * 0.030);  // spans z = 0 .. 0.06
+    group.add(arm);
 
+    // --- Hexagonal cup (neck between arm and lantern body) ---
+    const cup = new THREE.Mesh(assets.cupGeometry, assets.metalMaterial);
+    cup.position.set(0, s * 0.015, s * 0.075);   // cup top at y = 0.040
+    group.add(cup);
+
+    // Lantern body is centered at this Z — very close to wall (max protrusion ≈ 0.14 units)
+    const lz = s * 0.085;
+
+    // Y positions stack upward from cup top (y = 0.040)
+    const bodyBottomY = s * 0.040;
+    const bodyCenterY = bodyBottomY + s * 0.070;  // = s * 0.110
+    const bodyTopY    = bodyBottomY + s * 0.140;  // = s * 0.180
+
+    // --- Bottom collar ring ---
+    const botCollar = new THREE.Mesh(assets.collarGeometry, assets.metalMaterial);
+    botCollar.position.set(0, bodyBottomY, lz);
+    group.add(botCollar);
+
+    // --- Hexagonal glass body (open prism) ---
+    const glass = new THREE.Mesh(assets.glassGeometry, assets.glassMaterial);
+    glass.position.set(0, bodyCenterY, lz);
+    group.add(glass);
+
+    // --- 6 vertical metal edge bars at hex corners ---
+    const edgeRadius = s * 0.055;
+    for (let i = 0; i < 6; i += 1) {
+        const angle = (i / 6) * Math.PI * 2;
+        const edge = new THREE.Mesh(assets.edgeGeometry, assets.metalMaterial);
+        edge.position.set(
+            Math.sin(angle) * edgeRadius,
+            bodyCenterY,
+            lz + Math.cos(angle) * edgeRadius
+        );
+        group.add(edge);
+    }
+
+    // --- Top collar ring ---
+    const topCollar = new THREE.Mesh(assets.collarGeometry, assets.metalMaterial);
+    topCollar.position.set(0, bodyTopY, lz);
+    group.add(topCollar);
+
+    // --- Hexagonal pyramid cap ---
+    const cap = new THREE.Mesh(assets.capGeometry, assets.metalMaterial);
+    cap.position.set(0, bodyTopY + s * 0.0325, lz);
+    group.add(cap);
+
+    // --- Decorative finial at apex ---
+    const finial = new THREE.Mesh(assets.finialGeometry, assets.metalMaterial);
+    finial.position.set(0, bodyTopY + s * 0.083, lz);
+    group.add(finial);
+
+    // --- Edison bulb (emissive, inside hex body) ---
     const bulb = new THREE.Mesh(assets.bulbGeometry, assets.bulbMaterial);
-    bulb.position.z = tileSize * 0.11;
+    bulb.position.set(0, bodyCenterY, lz);
+    group.add(bulb);
 
-    const light = new THREE.PointLight(0xffd9a8, 1.1, tileSize * 3, 2);
-    light.position.set(0, 0, tileSize * 0.12);
+    // --- Point light ---
+    const light = new THREE.PointLight(lightColor, lightIntensity, s * 3.0, 2);
+    light.position.set(0, bodyCenterY, lz);
+    group.add(light);
 
-    group.add(base, shade, bulb, light);
     return { group, light };
 }
 
-function placeManualWallLamps({ mazeLayout, tileSize, wallHeight, targetGroup, placements }) {
+function placeManualWallLamps({ mazeLayout, tileSize, wallHeight, targetGroup, placements, lightColor = 0xffd9a8, lightIntensity = 1.1 }) {
     if (!mazeLayout || !targetGroup || !Array.isArray(placements)) {
         return;
     }
@@ -285,7 +342,7 @@ function placeManualWallLamps({ mazeLayout, tileSize, wallHeight, targetGroup, p
             continue;
         }
 
-        const { group } = createWallLamp(tileSize);
+        const { group } = createWallLamp(tileSize, lightColor, lightIntensity);
         const offset = tileSize * 0.5 - tileSize * 0.08;
         const x = column * tileSize + wallDef.normalX * offset;
         const z = row * tileSize + wallDef.normalZ * offset;
@@ -297,7 +354,7 @@ function placeManualWallLamps({ mazeLayout, tileSize, wallHeight, targetGroup, p
 
 let gameStarted = false;
 
-export function startGame() {
+export function startGame(mapConfig = MAP_CONFIGS.hotel) {
     if (gameStarted) {
         return;
     }
@@ -310,7 +367,10 @@ export function startGame() {
     }
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x0e1116);
+    scene.background = new THREE.Color(mapConfig.sceneBackground);
+    if (mapConfig.fogEnabled) {
+        scene.fog = new THREE.Fog(mapConfig.fogColor, mapConfig.fogNear, mapConfig.fogFar);
+    }
 
     bindLightNumberKeys();
 
@@ -518,10 +578,10 @@ export function startGame() {
     const tileSize = 1;
     const wallHeight = 1;
 
-    const ambientLight = registerLight('gameAmbient', new THREE.AmbientLight(0xffffff, 1.1));
+    const ambientLight = registerLight('gameAmbient', new THREE.AmbientLight(mapConfig.ambientColor, mapConfig.ambientIntensity));
     scene.add(ambientLight);
 
-    const mainLight = registerLight('gameDirectional', new THREE.DirectionalLight(0xffffff, 2.2));
+    const mainLight = registerLight('gameDirectional', new THREE.DirectionalLight(mapConfig.directionalColor, mapConfig.directionalIntensity));
     mainLight.position.set(8, 12, 6);
     mainLight.castShadow = true;
     mainLight.shadow.mapSize.set(2048, 2048);
@@ -535,10 +595,10 @@ export function startGame() {
     mainLight.shadow.camera.far = 30;
     scene.add(mainLight);
 
-    const wallTexture = createWallTexture(256);
+    const wallTexture = getWallTextureForMap(mapConfig);
     const wallMaterialPerspective = new THREE.MeshStandardMaterial({
         color: 0xffffff,
-        roughness: 0.85,
+        roughness: mapConfig.wallRoughness,
         metalness: 0.0,
         map: wallTexture ?? null
     });
@@ -549,16 +609,17 @@ export function startGame() {
         polygonOffsetFactor: -2,
         polygonOffsetUnits: -2
     });
-    const floorTexture = createCarpetFloorTexture(512);
+    const floorTexture = getFloorTextureForMap(mapConfig);
     const floorMaterialPerspective = new THREE.MeshStandardMaterial({
         color: 0xffffff,
-        roughness: 0.9,
+        roughness: mapConfig.floorRoughness,
         metalness: 0.0,
         map: floorTexture ?? null
     });
     const floorMaterialOrthographic = new THREE.MeshBasicMaterial({ color: 0x111827, toneMapped: false });
+    const ceilingColor = mapConfig.ceilingColor ?? 0xede0c8;
     const ceilingMaterial = new THREE.MeshStandardMaterial({
-        color: 0xfcd781,
+        color: ceilingColor,
         roughness: 0.9,
         metalness: 0.0,
         side: THREE.DoubleSide
@@ -586,11 +647,14 @@ export function startGame() {
     const centerMarkerCell = getCenterMarkerCell();
 
     alignCarpetTextureToGrid(floorTexture, mazeWidth, mazeHeight, tileSize, centerMarkerCell);
+    if (mapConfig.pointLightIntensity > 0) {
     placeManualWallLamps({
         mazeLayout,
         tileSize,
         wallHeight,
         targetGroup: pointLightGroup,
+        lightColor: mapConfig.pointLightColor,
+        lightIntensity: mapConfig.pointLightIntensity,
         placements: [
             { row: 1, column: 3, wall: 'south' },
             { row: 1, column: 9, wall: 'north' },
@@ -654,6 +718,7 @@ export function startGame() {
             { row: 21, column: 27, wall: 'south' }
         ]
     });
+    }
 
     const playerSpotlight = new THREE.Mesh(
         new THREE.CircleGeometry(0.18, 24),
@@ -680,11 +745,11 @@ export function startGame() {
 
     const { controls, spawnCell } = createPlayer({ camera: perspectiveCamera, mazeLayout, tileSize });
 
-    const ghosts = createGhosts({ scene, mazeLayout, centerMarkerCell, tileSize, wallHeight });
+    const ghosts = createGhosts({ scene, mazeLayout, centerMarkerCell, tileSize, wallHeight, enemyType: mapConfig.enemyType });
 
     const ghost2DGroup = new THREE.Group();
     scene.add(ghost2DGroup);
-    const ghost2DModels = createGhosts2D({ ghosts, tileSize });
+    const ghost2DModels = createGhosts2D({ ghosts, tileSize, enemyType: mapConfig.enemyType });
     for (const ghost2D of ghost2DModels) {
         ghost2DGroup.add(ghost2D);
     }
@@ -898,7 +963,7 @@ export function startGame() {
             minimapRoot.style.display = '';
         }
         floor.material = floorMaterialPerspective;
-        ceiling.visible = true;
+        ceiling.visible = mapConfig.ceilingVisible !== false;
 
         for (const ghost of ghosts) {
             ghost.visible = true;
@@ -981,7 +1046,6 @@ export function startGame() {
         }
 
         if (event.code === 'KeyR') {
-            sessionStorage.setItem('pacman3d_autostart', '1');
             window.location.reload();
             return;
         }
@@ -1339,7 +1403,6 @@ export function startGame() {
     pauseBackButton?.addEventListener('click', () => showPauseView('pause-main'));
 
     gameoverNewButton?.addEventListener('click', () => {
-        sessionStorage.setItem('pacman3d_autostart', '1');
         window.location.reload();
     });
     gameoverExitButton?.addEventListener('click', () => window.location.reload());

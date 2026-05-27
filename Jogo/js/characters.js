@@ -32,6 +32,20 @@ const ghostColors = {
 
 const ghostFrightenedColor = 0x1e3a8a;
 
+const dogColors = {
+    tan: 0xC27C4E,
+    dark: 0x7B4A2A,
+    golden: 0xD4A037,
+    russet: 0xA04020
+};
+
+const robotColors = {
+    steelBlue: 0x4A6880,
+    rustGrey: 0x705040,
+    oliveGrey: 0x506050,
+    slateGrey: 0x504858
+};
+
 const cardinalDirections = [
     { row: -1, column: 0 },
     { row: 1, column: 0 },
@@ -516,6 +530,175 @@ function buildGhost2D(color, tileSize) {
     return group;
 }
 
+function buildDog3D(color, tileSize) {
+    const group = new THREE.Group();
+    const r = tileSize * ghostSettings.radiusRatio;
+    const bodyMat = new THREE.MeshStandardMaterial({ color, roughness: 0.75, metalness: 0.0 });
+    const eyeMat = new THREE.MeshStandardMaterial({ color: 0xdd1111, emissive: 0xff2200, emissiveIntensity: 1.5 });
+    const noseMat = new THREE.MeshStandardMaterial({ color: 0x180808, roughness: 0.5 });
+
+    const bW = r * 0.80;
+    const bH = r * 0.60;
+    const bD = r * 1.35;
+    const body = new THREE.Mesh(new THREE.BoxGeometry(bW, bH, bD), bodyMat);
+    group.add(body);
+
+    const hS = r * 0.58;
+    const head = new THREE.Mesh(new THREE.BoxGeometry(hS, hS * 0.85, hS * 0.72), bodyMat);
+    head.position.set(0, bH * 0.22, bD * 0.5 + hS * 0.36);
+    group.add(head);
+
+    const snout = new THREE.Mesh(new THREE.BoxGeometry(hS * 0.52, hS * 0.34, hS * 0.38), bodyMat);
+    snout.position.set(0, -hS * 0.16, bD * 0.5 + hS * 0.72 + hS * 0.18);
+    group.add(snout);
+
+    const nose = new THREE.Mesh(new THREE.SphereGeometry(hS * 0.10, 7, 5), noseMat);
+    nose.position.set(0, -hS * 0.14, bD * 0.5 + hS * 0.72 + hS * 0.34);
+    group.add(nose);
+
+    for (const side of [-1, 1]) {
+        const ear = new THREE.Mesh(new THREE.BoxGeometry(hS * 0.18, hS * 0.26, hS * 0.16), bodyMat);
+        ear.position.set(side * hS * 0.30, hS * 0.55, bD * 0.5 + hS * 0.24);
+        ear.rotation.z = side * 0.28;
+        group.add(ear);
+    }
+
+    for (const side of [-1, 1]) {
+        const eye = new THREE.Mesh(new THREE.SphereGeometry(hS * 0.09, 7, 5), eyeMat);
+        eye.position.set(side * hS * 0.18, hS * 0.10, bD * 0.5 + hS * 0.60);
+        group.add(eye);
+    }
+
+    const lW = r * 0.17;
+    const lH = r * 0.40;
+    for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+        const leg = new THREE.Mesh(new THREE.BoxGeometry(lW, lH, lW), bodyMat);
+        leg.position.set(sx * bW * 0.30, -bH * 0.5 - lH * 0.5, sz * bD * 0.28);
+        group.add(leg);
+    }
+
+    const tail = new THREE.Mesh(new THREE.BoxGeometry(r * 0.10, r * 0.28, r * 0.10), bodyMat);
+    tail.position.set(0, bH * 0.15, -bD * 0.5 - r * 0.10);
+    tail.rotation.x = -0.55;
+    group.add(tail);
+
+    group.userData.bodyMaterial = bodyMat;
+    group.userData.bodyParts = [body, head, snout, tail];
+    group.userData.eyeParts = [];
+    group.userData.faceGroup = null;
+    group.userData.faceYaw = 0;
+    group.userData.rotateFullBody = true;
+    return group;
+}
+
+function buildDog2D(color, tileSize) {
+    const group = new THREE.Group();
+    const r = tileSize * ghostSettings.radiusRatio;
+    const mat = new THREE.MeshBasicMaterial({ color });
+    const body = new THREE.Mesh(new THREE.PlaneGeometry(r * 1.4, r * 1.1), mat);
+    const eyeMat = new THREE.MeshBasicMaterial({ color: 0xff2200 });
+    for (const side of [-1, 1]) {
+        const eye = new THREE.Mesh(new THREE.CircleGeometry(r * 0.10, 8), eyeMat);
+        eye.position.set(side * r * 0.22, r * 0.15, 0.01);
+        group.add(eye);
+    }
+    group.add(body);
+    group.userData.bodyMaterial = mat;
+    group.userData.bodyParts = [body];
+    group.userData.eyeParts = [];
+    group.userData.faceGroup = null;
+    group.userData.faceYaw = 0;
+    group.rotation.x = -Math.PI / 2;
+    return group;
+}
+
+function buildRobot3D(color, tileSize) {
+    const group = new THREE.Group();
+    const r = tileSize * ghostSettings.radiusRatio;
+    const bodyMat = new THREE.MeshStandardMaterial({ color, roughness: 0.6, metalness: 0.35 });
+    const eyeOnMat = new THREE.MeshStandardMaterial({ color: 0xff5500, emissive: 0xff4000, emissiveIntensity: 1.8 });
+    const eyeOffMat = new THREE.MeshStandardMaterial({ color: 0x1a0a00, roughness: 0.9 });
+    const wireMat = new THREE.MeshStandardMaterial({ color: 0xcc3300, roughness: 0.5 });
+
+    const tW = r * 0.72;
+    const tH = r * 0.80;
+    const tD = r * 0.52;
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(tW, tH, tD), bodyMat);
+    group.add(torso);
+
+    const hW = r * 0.52;
+    const hH = r * 0.45;
+    const head = new THREE.Mesh(new THREE.BoxGeometry(hW, hH, hW * 0.80), bodyMat);
+    head.position.set(r * 0.04, tH * 0.5 + hH * 0.5, 0);
+    head.rotation.z = 0.08;
+    group.add(head);
+
+    const eyeOn = new THREE.Mesh(new THREE.SphereGeometry(r * 0.09, 8, 6), eyeOnMat);
+    eyeOn.position.set(-r * 0.13, tH * 0.5 + hH * 0.40, hW * 0.38);
+    group.add(eyeOn);
+
+    const eyeOff = new THREE.Mesh(new THREE.SphereGeometry(r * 0.08, 7, 5), eyeOffMat);
+    eyeOff.position.set(r * 0.14, tH * 0.5 + hH * 0.38, hW * 0.38);
+    group.add(eyeOff);
+
+    const aW = r * 0.18;
+    const aH = r * 0.60;
+    const armL = new THREE.Mesh(new THREE.BoxGeometry(aW, aH, aW), bodyMat);
+    armL.position.set(-tW * 0.5 - aW * 0.5, tH * 0.10, 0);
+    group.add(armL);
+
+    const armR = new THREE.Mesh(new THREE.BoxGeometry(aW, aH * 0.75, aW), bodyMat);
+    armR.position.set(tW * 0.5 + aW * 0.5, -tH * 0.08, r * 0.08);
+    armR.rotation.z = 0.35;
+    group.add(armR);
+
+    for (let i = 0; i < 3; i += 1) {
+        const wLen = r * (0.15 + i * 0.06);
+        const wire = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.02, r * 0.02, wLen, 5), wireMat);
+        wire.position.set(-r * 0.10 + i * r * 0.10, tH * 0.40, tD * 0.40);
+        wire.rotation.x = 0.8 + i * 0.15;
+        group.add(wire);
+    }
+
+    const legHL = r * 0.48;
+    const legHR = r * 0.38;
+    const legW = r * 0.20;
+    const legL = new THREE.Mesh(new THREE.BoxGeometry(legW, legHL, legW), bodyMat);
+    legL.position.set(-tW * 0.26, -tH * 0.5 - legHL * 0.5, 0);
+    group.add(legL);
+
+    const legR = new THREE.Mesh(new THREE.BoxGeometry(legW, legHR, legW), bodyMat);
+    legR.position.set(tW * 0.26, -tH * 0.5 - legHR * 0.5, 0);
+    legR.rotation.z = 0.12;
+    group.add(legR);
+
+    group.userData.bodyMaterial = bodyMat;
+    group.userData.bodyParts = [torso, head, armL, armR, legL, legR];
+    group.userData.eyeParts = [];
+    group.userData.faceGroup = null;
+    group.userData.faceYaw = 0;
+    group.userData.rotateFullBody = true;
+    return group;
+}
+
+function buildRobot2D(color, tileSize) {
+    const group = new THREE.Group();
+    const r = tileSize * ghostSettings.radiusRatio;
+    const mat = new THREE.MeshBasicMaterial({ color });
+    const body = new THREE.Mesh(new THREE.PlaneGeometry(r * 1.2, r * 1.2), mat);
+    const eyeMat = new THREE.MeshBasicMaterial({ color: 0xff4400 });
+    const eye = new THREE.Mesh(new THREE.CircleGeometry(r * 0.12, 7), eyeMat);
+    eye.position.set(-r * 0.18, r * 0.20, 0.01);
+    group.add(body, eye);
+    group.userData.bodyMaterial = mat;
+    group.userData.bodyParts = [body];
+    group.userData.eyeParts = [eye];
+    group.userData.faceGroup = null;
+    group.userData.faceYaw = 0;
+    group.rotation.x = -Math.PI / 2;
+    return group;
+}
+
 export function createPacmanModels({ tileSize }) {
     const group3d = new THREE.Group();
     const radius = tileSize * 0.24;
@@ -656,14 +839,16 @@ export function createPlayer({ camera, mazeLayout, tileSize }) {
     return { controls, spawnCell };
 }
 
-export function createGhosts({ scene, mazeLayout, centerMarkerCell, tileSize, wallHeight }) {
+export function createGhosts({ scene, mazeLayout, centerMarkerCell, tileSize, wallHeight, enemyType = 'ghost' }) {
     const centerRow = Math.floor(mazeLayout.length / 2);
     const centerColumn = Math.floor(mazeLayout[0].length / 2);
     const centerCell = centerMarkerCell ?? { row: centerRow, column: centerColumn };
     const centerX = centerCell.column * tileSize;
     const centerZ = centerCell.row * tileSize;
     const ghostRadius = tileSize * ghostSettings.radiusRatio;
-    const ghostHeight = (wallHeight + 0.15) * 0.3 + tileSize * 0.08;
+    const enemyHeight = enemyType === 'ghost'
+        ? (wallHeight + 0.15) * 0.3 + tileSize * 0.08
+        : tileSize * 0.22;
 
     function resolveCellPosition(cell, fallbackX, fallbackZ) {
         if (isInsideGrid(mazeLayout, cell.row, cell.column) && mazeLayout[cell.row][cell.column] === 0) {
@@ -680,70 +865,61 @@ export function createGhosts({ scene, mazeLayout, centerMarkerCell, tileSize, wa
     const rightCell = { row: centerCell.row, column: centerCell.column + 1 };
     const upCell = { row: centerCell.row - 2, column: centerCell.column };
 
-    const blueGhost = buildGhost3D(ghostColors.blue, tileSize);
-    blueGhost.userData.radius = ghostRadius;
-    blueGhost.userData.baseSpeed = ghostSettings.moveSpeed;
-    blueGhost.userData.speed = ghostSettings.moveSpeed;
-    blueGhost.userData.direction = { row: 0, column: 1 };
-    blueGhost.userData.canTurn = true;
-    blueGhost.userData.color = ghostColors.blue;
-    blueGhost.userData.state = 'normal';
-    const bluePosition = resolveCellPosition(leftCell, centerX, centerZ);
-    blueGhost.position.set(bluePosition.x, ghostHeight, bluePosition.z);
+    const colorMap = enemyType === 'dog' ? dogColors : enemyType === 'robot' ? robotColors : ghostColors;
+    const colorList = Object.values(colorMap);
+    const buildFn = enemyType === 'dog' ? buildDog3D : enemyType === 'robot' ? buildRobot3D : buildGhost3D;
+    const initialDirections = [
+        { row: 0, column: 1 },
+        { row: 0, column: -1 },
+        { row: -1, column: 0 },
+        { row: 1, column: 0 }
+    ];
+    const speedMultipliers = [1.0, 1.05, 0.92, 0.98];
+    const spawnCells = [leftCell, rightCell, centerCell, upCell];
 
-    const redGhost = buildGhost3D(ghostColors.red, tileSize);
-    redGhost.userData.radius = ghostRadius;
-    redGhost.userData.baseSpeed = ghostSettings.moveSpeed * 1.05;
-    redGhost.userData.speed = ghostSettings.moveSpeed * 1.05;
-    redGhost.userData.direction = { row: 0, column: -1 };
-    redGhost.userData.canTurn = true;
-    redGhost.userData.color = ghostColors.red;
-    redGhost.userData.state = 'normal';
-    const redPosition = resolveCellPosition(rightCell, centerX, centerZ);
-    redGhost.position.set(redPosition.x, ghostHeight, redPosition.z);
+    const enemies = initialDirections.map((dir, i) => {
+        const enemy = buildFn(colorList[i] ?? colorList[0], tileSize);
+        enemy.userData.radius = ghostRadius;
+        enemy.userData.baseSpeed = ghostSettings.moveSpeed * speedMultipliers[i];
+        enemy.userData.speed = ghostSettings.moveSpeed * speedMultipliers[i];
+        enemy.userData.direction = { ...dir };
+        enemy.userData.canTurn = true;
+        enemy.userData.color = colorList[i] ?? colorList[0];
+        enemy.userData.state = 'normal';
+        const pos = resolveCellPosition(spawnCells[i], centerX, centerZ);
+        enemy.position.set(pos.x, enemyHeight, pos.z);
+        return enemy;
+    });
 
-    const orangeGhost = buildGhost3D(ghostColors.orange, tileSize);
-    orangeGhost.userData.radius = ghostRadius;
-    orangeGhost.userData.baseSpeed = ghostSettings.moveSpeed * 0.92;
-    orangeGhost.userData.speed = ghostSettings.moveSpeed * 0.92;
-    orangeGhost.userData.direction = { row: -1, column: 0 };
-    orangeGhost.userData.canTurn = true;
-    orangeGhost.userData.color = ghostColors.orange;
-    orangeGhost.userData.state = 'normal';
-    const orangePosition = resolveCellPosition(centerCell, centerX, centerZ);
-    orangeGhost.position.set(orangePosition.x, ghostHeight, orangePosition.z);
+    scene.add(...enemies);
 
-    const pinkGhost = buildGhost3D(ghostColors.pink, tileSize);
-    pinkGhost.userData.radius = ghostRadius;
-    pinkGhost.userData.baseSpeed = ghostSettings.moveSpeed * 0.98;
-    pinkGhost.userData.speed = ghostSettings.moveSpeed * 0.98;
-    pinkGhost.userData.direction = { row: 1, column: 0 };
-    pinkGhost.userData.canTurn = true;
-    pinkGhost.userData.color = ghostColors.pink;
-    pinkGhost.userData.state = 'normal';
-    const pinkPosition = resolveCellPosition(upCell, centerX, centerZ);
-    pinkGhost.position.set(pinkPosition.x, ghostHeight, pinkPosition.z);
-
-    scene.add(blueGhost, redGhost, orangeGhost, pinkGhost);
-
-    for (const ghost of [blueGhost, redGhost, orangeGhost, pinkGhost]) {
-        if (!isNearCellCenter(ghost.position, tileSize)) {
-                ghost.userData.direction = pickGhostDirection(ghost, mazeLayout, tileSize, { blockCenterBox: false, centerMarkerCell });
+    for (const enemy of enemies) {
+        if (!isNearCellCenter(enemy.position, tileSize)) {
+            enemy.userData.direction = pickGhostDirection(enemy, mazeLayout, tileSize, { blockCenterBox: false, centerMarkerCell });
         }
-        const dir = ghost.userData.direction ?? { row: 0, column: 0 };
-        ghost.userData.faceYaw = dir.row || dir.column ? Math.atan2(dir.column, dir.row) : 0;
-        if (ghost.userData.faceGroup) {
-            ghost.userData.faceGroup.rotation.y = ghost.userData.faceYaw;
+        const dir = enemy.userData.direction ?? { row: 0, column: 0 };
+        enemy.userData.faceYaw = dir.row || dir.column ? Math.atan2(dir.column, dir.row) : 0;
+        if (enemy.userData.rotateFullBody) {
+            enemy.rotation.y = enemy.userData.faceYaw;
+        } else if (enemy.userData.faceGroup) {
+            enemy.userData.faceGroup.rotation.y = enemy.userData.faceYaw;
         }
     }
 
-    return [blueGhost, redGhost, orangeGhost, pinkGhost];
+    return enemies;
 }
 
-export function createGhosts2D({ ghosts, tileSize }) {
+export function createGhosts2D({ ghosts, tileSize, enemyType = 'ghost' }) {
     return ghosts.map((ghost) => {
         const color = ghost.userData.color ?? ghostColors.blue;
-        const ghost2d = buildGhost2D(color, tileSize);
+        let ghost2d;
+        if (enemyType === 'dog') {
+            ghost2d = buildDog2D(color, tileSize);
+        } else if (enemyType === 'robot') {
+            ghost2d = buildRobot2D(color, tileSize);
+        } else {
+            ghost2d = buildGhost2D(color, tileSize);
+        }
         ghost2d.userData.baseColor = color;
         ghost2d.userData.state = 'normal';
         return ghost2d;
@@ -774,24 +950,29 @@ function updateGhostFaceOrientation(ghost, deltaSeconds) {
         return;
     }
 
-    const {faceGroup} = ghost.userData;
-    if (!faceGroup) {
-        return;
-    }
-
     const dir = ghost.userData.direction ?? { row: 0, column: 0 };
     if (!dir.row && !dir.column) {
         return;
     }
 
     const targetYaw = Math.atan2(dir.column, dir.row);
-    const currentYaw = ghost.userData.faceYaw ?? faceGroup.rotation.y;
+    const currentYaw = ghost.userData.faceYaw ?? 0;
     const maxStep = ghostSettings.faceTurnSpeed * deltaSeconds;
     const wrappedDelta = ((targetYaw - currentYaw + Math.PI) % (Math.PI * 2)) - Math.PI;
     const clampedDelta = Math.abs(wrappedDelta) <= maxStep ? wrappedDelta : Math.sign(wrappedDelta) * maxStep;
     const nextYaw = currentYaw + clampedDelta;
 
     ghost.userData.faceYaw = nextYaw;
+
+    if (ghost.userData.rotateFullBody) {
+        ghost.rotation.y = nextYaw;
+        return;
+    }
+
+    const { faceGroup } = ghost.userData;
+    if (!faceGroup) {
+        return;
+    }
     faceGroup.rotation.y = nextYaw;
 }
 
