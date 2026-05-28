@@ -1,369 +1,353 @@
 // scene.js
-// Responsible for everything related to rendering and cameras.
+// Responsável por tudo o que diz respeito à renderização e às câmaras.
 //
-// This module creates and manages:
-//   - The Three.js Scene (the container that holds all 3D objects)
-//   - The main Renderer (draws the scene to the screen)
-//   - Two cameras:
-//       • perspectiveCamera  → first-person 3D view (normal gameplay)
-//       • orthographicCamera → top-down 2D view (bird's-eye view, toggled with Space)
-//   - A "sun" visual: the directional light that casts shadows, plus a visible
-//     sun sphere and a glow sprite in the sky
-//   - View switching: swapping materials, visibility, and the active camera
-//     when the player toggles between 3D and 2D views
-//   - Window resize handling so the image always fills the screen correctly
+// Este módulo cria e gere:
+//   - A Cena do Three.js (o contentor que guarda todos os objetos 3D)
+//   - O Renderizador principal (desenha a cena no ecrã)
+//   - Duas câmaras:
+//       • cameraPerspetiva  → vista em primeira pessoa 3D (jogo normal)
+//       • cameraTopDown     → vista de cima 2D (vista de pássaro, ativada com Espaço)
+//   - O sol: a luz direcional que projeta sombras, mais uma esfera visível
+//             e um sprite de resplendor no céu
+//   - Troca de vistas: materiais, visibilidade e câmara ativa mudam ao
+//     trocar entre a vista 3D e a vista 2D
+//   - Redimensionamento da janela para a imagem preencher sempre o ecrã
 
 import * as THREE from 'three';
-import { registerLight, setLightEnabledByKey } from './lights.js';
+import { registarLuz, definirLuzAtivaPorChave } from './lights.js';
 
 // ─────────────────────────────────────────────────────────────
-// SCENE AND RENDERER SETUP
+// CRIAÇÃO DA CENA E DO RENDERIZADOR
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Creates the Three.js Scene, main WebGL Renderer, and scene lighting.
- * The renderer's canvas element is appended to the given DOM container.
+ * Cria a Cena do Three.js, o Renderizador WebGL principal e a iluminação da cena.
+ * O elemento canvas do renderizador é adicionado ao contentor DOM fornecido.
  *
- * @param {HTMLElement} container   - The DOM element that receives the canvas.
- * @param {object}      mapConfig   - Map settings (background color, fog, lights, etc.).
+ * @param {HTMLElement} contentor       - O elemento DOM que recebe o canvas.
+ * @param {object}      configuracaoMapa - Definições do mapa (cor de fundo, névoa, luzes, etc.).
  * @returns {{
- *   scene:       THREE.Scene,
- *   renderer:    THREE.WebGLRenderer,
- *   sceneFog:    THREE.Fog | null,
- *   ambientLight: THREE.AmbientLight,
- *   mainLight:   THREE.DirectionalLight
+ *   cena:          THREE.Scene,
+ *   renderizador:  THREE.WebGLRenderer,
+ *   nevoeiroJogo:  THREE.Fog | null,
+ *   luzAmbiente:   THREE.AmbientLight,
+ *   luzPrincipal:  THREE.DirectionalLight
  * }}
  */
-export function createSceneAndRenderer(container, mapConfig) {
-    // The scene holds all 3D objects, lights, and cameras
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(mapConfig.sceneBackground);
+export function criarCenaERenderizador(contentor, configuracaoMapa) {
+    // A cena guarda todos os objetos 3D, luzes e câmaras
+    const cena = new THREE.Scene();
+    cena.background = new THREE.Color(configuracaoMapa.sceneBackground);
 
-    // Fog makes distant walls fade into the background, creating depth
-    const sceneFog = mapConfig.fogEnabled
-        ? new THREE.Fog(mapConfig.fogColor, mapConfig.fogNear, mapConfig.fogFar)
+    // A névoa faz as paredes distantes desvanecerem no fundo, criando profundidade
+    const nevoeiroJogo = configuracaoMapa.fogEnabled
+        ? new THREE.Fog(configuracaoMapa.fogColor, configuracaoMapa.fogNear, configuracaoMapa.fogFar)
         : null;
-    scene.fog = sceneFog;
+    cena.fog = nevoeiroJogo;
 
-    // The renderer converts the 3D scene into a 2D image on the screen
-    const renderer = new THREE.WebGLRenderer({
-        antialias: true,            // smoother edges (slightly slower but looks much better)
+    // O renderizador converte a cena 3D numa imagem 2D no ecrã
+    const renderizador = new THREE.WebGLRenderer({
+        antialias: true,                    // bordas mais suaves (ligeiramente mais lento mas melhor aspeto)
         powerPreference: 'high-performance'
     });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // cap at 2× for performance
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;  // soft shadow edges
-    container.appendChild(renderer.domElement);
+    renderizador.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // limite de 2× por desempenho
+    renderizador.setSize(window.innerWidth, window.innerHeight);
+    renderizador.shadowMap.enabled = true;
+    renderizador.shadowMap.type = THREE.PCFSoftShadowMap;  // bordas de sombra suaves
+    contentor.appendChild(renderizador.domElement);
 
-    // Ambient light: fills the whole scene with a flat, directionless glow
-    // (prevents shadow areas from being completely black)
-    const ambientLight = registerLight(
+    // Luz ambiente: preenche a cena toda com um brilho plano e sem direção
+    // (impede que as áreas em sombra fiquem completamente negras)
+    const luzAmbiente = registarLuz(
         'gameAmbient',
-        new THREE.AmbientLight(mapConfig.ambientColor, mapConfig.ambientIntensity)
+        new THREE.AmbientLight(configuracaoMapa.ambientColor, configuracaoMapa.ambientIntensity)
     );
-    scene.add(ambientLight);
+    cena.add(luzAmbiente);
 
-    // Main directional light: acts as the sun, casts shadows
-    const mainLight = registerLight(
+    // Luz direcional principal: funciona como o sol, projeta sombras
+    const luzPrincipal = registarLuz(
         'gameDirectional',
-        new THREE.DirectionalLight(mapConfig.directionalColor, mapConfig.directionalIntensity)
+        new THREE.DirectionalLight(configuracaoMapa.directionalColor, configuracaoMapa.directionalIntensity)
     );
-    mainLight.castShadow = true;
-    mainLight.shadow.mapSize.set(2048, 2048); // shadow resolution (higher = sharper shadows)
-    mainLight.shadow.bias = -0.0003;          // prevents shadow acne on flat surfaces
-    mainLight.shadow.normalBias = 0.04;
-    scene.add(mainLight);
+    luzPrincipal.castShadow = true;
+    luzPrincipal.shadow.mapSize.set(2048, 2048); // resolução das sombras (maior = sombras mais nítidas)
+    luzPrincipal.shadow.bias = -0.0003;          // evita artefactos de sombra em superfícies planas
+    luzPrincipal.shadow.normalBias = 0.04;
+    cena.add(luzPrincipal);
 
-    return { scene, renderer, sceneFog, ambientLight, mainLight };
+    return { cena, renderizador, nevoeiroJogo, luzAmbiente, luzPrincipal };
 }
 
 // ─────────────────────────────────────────────────────────────
-// SUN VISUAL
-// Sets the directional light position to simulate a sun at 60°
-// elevation and 45° azimuth, then adds a visible sun sphere and
-// a radial-gradient glow sprite in the sky.
+// SOL
+// Posiciona a luz direcional para simular um sol a 60° de elevação
+// e 45° de azimute, depois adiciona uma esfera visível e um sprite
+// de resplendor no céu.
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Positions the main directional light like a sun and adds visible sun visuals.
- * Pressing key '6' toggles the sun (and ambient light) on/off.
+ * Posiciona a luz principal como um sol e adiciona os visuais do sol à cena.
+ * A tecla '6' alterna o sol (e a luz ambiente) ligado/desligado.
  *
- * @param {THREE.Scene}            scene          - The scene to add visuals to.
- * @param {THREE.DirectionalLight} mainLight      - The light to position and configure.
- * @param {{ column: number, row: number } | null} centerMarkerCell - Center of the maze.
- * @param {number} mazeCenterX  - World X of the maze center.
- * @param {number} mazeCenterZ  - World Z of the maze center.
- * @param {number} mazeWidth    - Total world width of the maze.
- * @param {number} mazeHeight   - Total world height of the maze.
- * @param {number} tileSize     - World size of one tile.
+ * @param {THREE.Scene}              cena           - A cena onde os visuais são adicionados.
+ * @param {THREE.DirectionalLight}   luzPrincipal   - A luz a posicionar e configurar.
+ * @param {{ column: number, row: number } | null} celulaCentro - Centro do labirinto.
+ * @param {number} centroCenaX   - X do mundo no centro do labirinto.
+ * @param {number} centroCenaZ   - Z do mundo no centro do labirinto.
+ * @param {number} larguraLabirinto  - Largura total do labirinto.
+ * @param {number} alturaLabirinto   - Profundidade total do labirinto.
+ * @param {number} tamanhoCelula     - Tamanho de uma célula em unidades do mundo.
  */
-export function setupSunLight(scene, mainLight, centerMarkerCell, mazeCenterX, mazeCenterZ, mazeWidth, mazeHeight, tileSize) {
-    // The sun orbits at 30 world-units distance from the maze center,
-    // at 60° elevation above the horizon and 45° horizontal azimuth.
-    const pivotX = centerMarkerCell ? centerMarkerCell.column * tileSize : mazeCenterX;
-    const pivotZ = centerMarkerCell ? centerMarkerCell.row    * tileSize : mazeCenterZ;
-    const elevation  = Math.PI / 3;   // 60° above the horizon
-    const azimuth    = Math.PI / 4;   // 45° horizontal rotation
-    const sunDistance = 30;
+export function configurarLuzSolar(cena, luzPrincipal, celulaCentro, centroCenaX, centroCenaZ, larguraLabirinto, alturaLabirinto, tamanhoCelula) {
+    // O sol orbita a 30 unidades de distância do centro do labirinto,
+    // a 60° de elevação acima do horizonte e 45° de azimute horizontal.
+    const pivotX = celulaCentro ? celulaCentro.column * tamanhoCelula : centroCenaX;
+    const pivotZ = celulaCentro ? celulaCentro.row    * tamanhoCelula : centroCenaZ;
+    const elevacao   = Math.PI / 3;  // 60° acima do horizonte
+    const azimute    = Math.PI / 4;  // 45° de rotação horizontal
+    const distanciaSol = 30;
 
-    mainLight.position.set(
-        pivotX + sunDistance * Math.cos(elevation) * Math.cos(azimuth),
-        sunDistance * Math.sin(elevation),
-        pivotZ + sunDistance * Math.cos(elevation) * Math.sin(azimuth)
+    luzPrincipal.position.set(
+        pivotX + distanciaSol * Math.cos(elevacao) * Math.cos(azimute),
+        distanciaSol * Math.sin(elevacao),
+        pivotZ + distanciaSol * Math.cos(elevacao) * Math.sin(azimute)
     );
-    mainLight.target.position.set(pivotX, 0, pivotZ);
-    scene.add(mainLight.target);
+    luzPrincipal.target.position.set(pivotX, 0, pivotZ);
+    cena.add(luzPrincipal.target);
 
-    // Shadow frustum covers the whole maze plus a small margin
-    const shadowHalfSize = Math.max(mazeWidth, mazeHeight) * 0.65;
-    mainLight.shadow.camera.left   = -shadowHalfSize;
-    mainLight.shadow.camera.right  =  shadowHalfSize;
-    mainLight.shadow.camera.top    =  shadowHalfSize;
-    mainLight.shadow.camera.bottom = -shadowHalfSize;
-    mainLight.shadow.camera.near   = 1;
-    mainLight.shadow.camera.far    = 80;
-    mainLight.shadow.camera.updateProjectionMatrix();
+    // O frustum de sombra cobre todo o labirinto com uma pequena margem
+    const metadeZonaSombra = Math.max(larguraLabirinto, alturaLabirinto) * 0.65;
+    luzPrincipal.shadow.camera.left   = -metadeZonaSombra;
+    luzPrincipal.shadow.camera.right  =  metadeZonaSombra;
+    luzPrincipal.shadow.camera.top    =  metadeZonaSombra;
+    luzPrincipal.shadow.camera.bottom = -metadeZonaSombra;
+    luzPrincipal.shadow.camera.near   = 1;
+    luzPrincipal.shadow.camera.far    = 80;
+    luzPrincipal.shadow.camera.updateProjectionMatrix();
 
-    // Visible sun sphere at the light position
-    const sunCoreMesh = new THREE.Mesh(
+    // Esfera visível na posição da luz (representa o disco solar)
+    const malhaCoreSol = new THREE.Mesh(
         new THREE.SphereGeometry(1.0, 16, 16),
         new THREE.MeshBasicMaterial({ color: 0xfffde8 })
     );
-    sunCoreMesh.position.copy(mainLight.position);
-    scene.add(sunCoreMesh);
+    malhaCoreSol.position.copy(luzPrincipal.position);
+    cena.add(malhaCoreSol);
 
-    // Glow halo: a canvas texture with a radial gradient, displayed as a billboard Sprite
-    const glowCanvas = document.createElement('canvas');
-    glowCanvas.width  = 256;
-    glowCanvas.height = 256;
-    const glowCtx = glowCanvas.getContext('2d');
-    const gradient = glowCtx.createRadialGradient(128, 128, 0, 128, 128, 128);
-    gradient.addColorStop(0.00, 'rgba(255, 255, 220, 1.00)');
-    gradient.addColorStop(0.15, 'rgba(255, 240, 100, 0.85)');
-    gradient.addColorStop(0.40, 'rgba(255, 200,  40, 0.30)');
-    gradient.addColorStop(0.70, 'rgba(255, 160,   0, 0.08)');
-    gradient.addColorStop(1.00, 'rgba(255, 120,   0, 0.00)');
-    glowCtx.fillStyle = gradient;
-    glowCtx.fillRect(0, 0, 256, 256);
+    // Halo de resplendor: textura de canvas com gradiente radial, exibida como um Sprite billboard
+    const canvasResplendor = document.createElement('canvas');
+    canvasResplendor.width  = 256;
+    canvasResplendor.height = 256;
+    const ctxResplendor = canvasResplendor.getContext('2d');
+    const gradiente = ctxResplendor.createRadialGradient(128, 128, 0, 128, 128, 128);
+    gradiente.addColorStop(0.00, 'rgba(255, 255, 220, 1.00)');
+    gradiente.addColorStop(0.15, 'rgba(255, 240, 100, 0.85)');
+    gradiente.addColorStop(0.40, 'rgba(255, 200,  40, 0.30)');
+    gradiente.addColorStop(0.70, 'rgba(255, 160,   0, 0.08)');
+    gradiente.addColorStop(1.00, 'rgba(255, 120,   0, 0.00)');
+    ctxResplendor.fillStyle = gradiente;
+    ctxResplendor.fillRect(0, 0, 256, 256);
 
-    const sunGlowSprite = new THREE.Sprite(new THREE.SpriteMaterial({
-        map: new THREE.CanvasTexture(glowCanvas),
-        blending: THREE.AdditiveBlending, // adds color on top, making it appear to glow
+    const spriteResplendorSol = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: new THREE.CanvasTexture(canvasResplendor),
+        blending: THREE.AdditiveBlending, // adiciona cor por cima, dando efeito de brilho
         transparent: true,
-        depthWrite: false                 // prevents the sprite from blocking other objects
+        depthWrite: false  // impede que o sprite bloqueie outros objetos
     }));
-    sunGlowSprite.position.copy(mainLight.position);
-    sunGlowSprite.scale.set(14, 14, 1);
-    scene.add(sunGlowSprite);
+    spriteResplendorSol.position.copy(luzPrincipal.position);
+    spriteResplendorSol.scale.set(14, 14, 1);
+    cena.add(spriteResplendorSol);
 
-    // Key '6' toggles the sun and ambient light on/off
-    let sunVisible = true;
-    window.addEventListener('keydown', (event) => {
-        if (event.key !== '6') return;
-        sunVisible = !sunVisible;
-        setLightEnabledByKey('gameDirectional', sunVisible);
-        setLightEnabledByKey('gameAmbient',     sunVisible);
-        sunCoreMesh.visible   = sunVisible;
-        sunGlowSprite.visible = sunVisible;
+    // A tecla '6' alterna o sol e a luz ambiente ligado/desligado
+    let solVisivel = true;
+    window.addEventListener('keydown', (evento) => {
+        if (evento.key !== '6') return;
+        solVisivel = !solVisivel;
+        definirLuzAtivaPorChave('gameDirectional', solVisivel);
+        definirLuzAtivaPorChave('gameAmbient',     solVisivel);
+        malhaCoreSol.visible       = solVisivel;
+        spriteResplendorSol.visible = solVisivel;
     });
 }
 
 // ─────────────────────────────────────────────────────────────
-// CAMERAS
+// CÂMARAS
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Creates the two game cameras.
+ * Cria as duas câmaras do jogo.
  *
- * perspectiveCamera  — standard first-person 3D camera.
- * orthographicCamera — top-down flat camera centered on the maze.
- *   Its size is fixed so the whole maze is always visible.
+ * cameraPerspetiva — câmara 3D padrão em primeira pessoa.
+ * cameraTopDown    — câmara plana vista de cima centrada no labirinto.
  *
- * @param {number} mazeWidth   - Total world width of the maze.
- * @param {number} mazeHeight  - Total world depth of the maze.
- * @param {number} mazeCenterX - World X of the maze center.
- * @param {number} mazeCenterZ - World Z of the maze center.
- * @returns {{ perspectiveCamera: THREE.PerspectiveCamera, orthographicCamera: THREE.OrthographicCamera }}
+ * @param {number} larguraLabirinto  - Largura total do labirinto.
+ * @param {number} alturaLabirinto   - Profundidade total do labirinto.
+ * @param {number} centroCenaX       - X do mundo no centro do labirinto.
+ * @param {number} centroCenaZ       - Z do mundo no centro do labirinto.
+ * @returns {{ cameraPerspetiva: THREE.PerspectiveCamera, cameraTopDown: THREE.OrthographicCamera }}
  */
-export function createGameCameras(mazeWidth, mazeHeight, mazeCenterX, mazeCenterZ) {
-    // First-person perspective camera — standard 60° field of view
-    const perspectiveCamera = new THREE.PerspectiveCamera(
-        60,                                          // vertical field of view in degrees
-        window.innerWidth / window.innerHeight,      // aspect ratio matches the window
-        0.1,                                         // near clipping plane (don't draw closer than this)
-        100                                          // far clipping plane (don't draw farther than this)
+export function criarCamerasDeJogo(larguraLabirinto, alturaLabirinto, centroCenaX, centroCenaZ) {
+    // Câmara em perspetiva — campo de visão de 60° (ângulo vertical)
+    const cameraPerspetiva = new THREE.PerspectiveCamera(
+        60,                                          // campo de visão em graus
+        window.innerWidth / window.innerHeight,      // rácio de aspeto igual à janela
+        0.1,                                         // plano de corte próximo
+        100                                          // plano de corte distante
     );
 
-    // Top-down orthographic camera — no perspective distortion
-    // Size is calculated so the whole maze fits in the view with some padding
-    const orthoHalfSize = Math.max(mazeWidth, mazeHeight) * 0.6;
-    const orthographicCameraAltitude = 18;  // how high above the floor the camera floats
-    const orthographicCamera = new THREE.OrthographicCamera(
-        -orthoHalfSize,   // left edge
-         orthoHalfSize,   // right edge
-         orthoHalfSize,   // top edge
-        -orthoHalfSize,   // bottom edge
-        0.1,              // near clip
-        100               // far clip
+    // Câmara ortogonal de topo — sem distorção de perspetiva
+    // O tamanho garante que todo o labirinto cabe na vista com alguma margem
+    const metadeTamanhoOrtogonal = Math.max(larguraLabirinto, alturaLabirinto) * 0.6;
+    const altitudeCameraTopDown = 18;  // altura acima do chão a que a câmara flutua
+    const cameraTopDown = new THREE.OrthographicCamera(
+        -metadeTamanhoOrtogonal,  // bordo esquerdo
+         metadeTamanhoOrtogonal,  // bordo direito
+         metadeTamanhoOrtogonal,  // bordo superior
+        -metadeTamanhoOrtogonal,  // bordo inferior
+        0.1,                      // corte próximo
+        100                       // corte distante
     );
-    orthographicCamera.position.set(mazeCenterX, orthographicCameraAltitude, mazeCenterZ);
-    orthographicCamera.lookAt(mazeCenterX, 0, mazeCenterZ);
+    cameraTopDown.position.set(centroCenaX, altitudeCameraTopDown, centroCenaZ);
+    cameraTopDown.lookAt(centroCenaX, 0, centroCenaZ);
 
-    return { perspectiveCamera, orthographicCamera };
+    return { cameraPerspetiva, cameraTopDown };
 }
 
 // ─────────────────────────────────────────────────────────────
-// VIEW SWITCHING
-// The game has two views: 3D perspective (default) and 2D top-down.
-// Switching swaps materials, camera, and which character models are visible.
+// TROCA DE VISTAS
+// O jogo tem duas vistas: perspetiva 3D (padrão) e topo 2D.
+// Ao trocar, substituem-se materiais, câmara e quais modelos são visíveis.
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Switches all scene objects to the 3D perspective view.
- * Shows the 3D character models, enables fog, and uses the standard materials.
+ * Muda todos os objetos da cena para a vista 3D em perspetiva.
+ * Mostra os modelos 3D dos personagens, ativa a névoa e usa os materiais completos.
  *
- * @param {object} viewObjects - All the scene objects that change between views.
+ * @param {object} pacoteVistas - Todos os objetos da cena que mudam entre vistas.
  */
-export function activatePerspectiveView({
-    controls, perspectiveCamera, minimapRoot,
-    floor, floorMaterialPerspective,
-    ceiling, mapConfig, sceneFog, scene,
-    ghosts, ghost2DModels, pacman2D, pacman3D,
-    mazeGroup, wallMaterialPerspective,
-    activeState
+export function ativarVistaPerspetiva({
+    controlos, cameraPerspetiva, raizMinimapa,
+    chao, materialChaoPersp,
+    teto, configuracaoMapa, nevoeiroJogo, cena,
+    fantasmas, modelos2DFantasmas, pacman2D, pacman3D,
+    grupoLabirinto, materialParedePersp,
+    estadoAtivo
 }) {
-    activeState.camera = perspectiveCamera;
-    activeState.view   = 'perspective';
-    controls.view      = 'perspective';
+    estadoAtivo.camera = cameraPerspetiva;
+    estadoAtivo.vista  = 'perspetiva';
+    controlos.view     = 'perspective';
 
-    // Show the minimap overlay in the corner
-    if (minimapRoot) minimapRoot.style.display = '';
+    // Mostrar o minimapa no canto
+    if (raizMinimapa) raizMinimapa.style.display = '';
 
-    // Swap floor material back to the full-quality perspective version
-    floor.material = floorMaterialPerspective;
+    // Restaurar o material de chão de qualidade total
+    chao.material = materialChaoPersp;
 
-    // Show ceiling only if the map config allows it
-    ceiling.visible = mapConfig.ceilingVisible !== false;
+    // Mostrar teto apenas se o mapa assim o definir
+    teto.visible = configuracaoMapa.ceilingVisible !== false;
 
-    // Re-enable fog so the corridor looks deep and atmospheric
-    scene.fog = sceneFog;
+    // Reativar névoa para profundidade nos corredores
+    cena.fog = nevoeiroJogo;
 
-    // Show 3D ghost models, hide flat 2D ones
-    for (const ghost of ghosts)       ghost.visible = true;
-    for (const ghost2D of ghost2DModels) ghost2D.visible = false;
+    // Mostrar modelos 3D dos fantasmas, esconder os 2D planos
+    for (const fantasma of fantasmas)          fantasma.visible = true;
+    for (const modelo2D of modelos2DFantasmas) modelo2D.visible = false;
 
-    // Show 3D pacman, hide flat 2D sprite
+    // Mostrar Pacman 3D, esconder o sprite 2D
     pacman2D.visible = false;
     pacman3D.visible = true;
 
-    // Swap all wall tiles to the detailed perspective material
-    for (const wall of mazeGroup.children) {
-        if (wall.userData?.isPanel) continue;  // skip decorative panels
-        wall.material = wallMaterialPerspective;
+    // Aplicar o material detalhado de perspetiva a todas as paredes
+    for (const parede of grupoLabirinto.children) {
+        if (parede.userData?.isPanel) continue;  // ignorar painéis decorativos
+        parede.material = materialParedePersp;
     }
 }
 
 /**
- * Switches all scene objects to the 2D top-down orthographic view.
- * Shows flat sprite models, removes fog, and uses simplified materials.
+ * Muda todos os objetos da cena para a vista 2D ortogonal de topo.
+ * Mostra sprites planos, remove a névoa e usa materiais simplificados.
  *
- * @param {object} viewObjects - All the scene objects that change between views.
+ * @param {object} pacoteVistas - Todos os objetos da cena que mudam entre vistas.
  */
-export function activateOrthographicView({
-    controls, orthographicCamera, minimapRoot,
-    floor, floorMaterialOrthographic,
-    ceiling, scene,
-    ghosts, ghost2DModels, pacman2D, pacman3D,
-    mazeGroup, wallMaterialOrthographic,
-    activeState
+export function ativarVistaTopDown({
+    controlos, cameraTopDown, raizMinimapa,
+    chao, materialChaoTop,
+    teto, cena,
+    fantasmas, modelos2DFantasmas, pacman2D, pacman3D,
+    grupoLabirinto, materialParedeTop,
+    estadoAtivo
 }) {
-    activeState.camera = orthographicCamera;
-    activeState.view   = 'orthographic';
-    controls.view      = 'orthographic';
+    estadoAtivo.camera = cameraTopDown;
+    estadoAtivo.vista  = 'topo';
+    controlos.view     = 'orthographic';
 
-    // Hide the minimap — the whole view is already top-down
-    if (minimapRoot) minimapRoot.style.display = 'none';
+    // Esconder o minimapa — a vista já é de cima
+    if (raizMinimapa) raizMinimapa.style.display = 'none';
 
-    // Swap floor to simplified flat material (no lighting calculation needed from above)
-    floor.material = floorMaterialOrthographic;
+    // Material de chão plano simplificado (sem cálculo de iluminação)
+    chao.material = materialChaoTop;
 
-    // No ceiling in top-down view — it would block everything
-    ceiling.visible = false;
+    // Sem teto na vista de topo — taparia tudo
+    teto.visible = false;
 
-    // Remove fog — distance cueing doesn't make sense from directly above
-    scene.fog = null;
+    // Sem névoa — não faz sentido a partir de cima
+    cena.fog = null;
 
-    // Hide 3D ghost models, show flat 2D ones
-    for (const ghost of ghosts)          ghost.visible = false;
-    for (const ghost2D of ghost2DModels) ghost2D.visible = true;
+    // Esconder modelos 3D dos fantasmas, mostrar os 2D planos
+    for (const fantasma of fantasmas)          fantasma.visible = false;
+    for (const modelo2D of modelos2DFantasmas) modelo2D.visible = true;
 
-    // Show flat pacman sprite, hide 3D model
+    // Mostrar sprite plano do Pacman, esconder o modelo 3D
     pacman2D.visible = true;
     pacman3D.visible = false;
 
-    // Swap walls to the flat MeshBasicMaterial (no lighting, faster)
-    for (const wall of mazeGroup.children) {
-        if (wall.userData?.isPanel) continue;
-        wall.material = wallMaterialOrthographic;
-    }
-}
-
-/**
- * Toggles between perspective and orthographic view.
- * Called when the player presses Space.
- *
- * @param {object} viewArgs    - Same argument bundle as activatePerspectiveView / activateOrthographicView.
- * @param {object} activeState - Mutable object with { camera, view } tracking the current view.
- */
-export function toggleGameView(viewArgs, activeState) {
-    if (activeState.view === 'perspective') {
-        activateOrthographicView({ ...viewArgs, activeState });
-    } else {
-        activatePerspectiveView({ ...viewArgs, activeState });
+    // Aplicar o material plano MeshBasicMaterial às paredes (sem iluminação, mais rápido)
+    for (const parede of grupoLabirinto.children) {
+        if (parede.userData?.isPanel) continue;
+        parede.material = materialParedeTop;
     }
 }
 
 // ─────────────────────────────────────────────────────────────
-// WINDOW RESIZE HANDLER
+// REDIMENSIONAMENTO DA JANELA
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Updates renderer size, camera aspect ratios, and minimap size
- * whenever the browser window is resized.
+ * Atualiza o tamanho do renderizador, os rácios de aspeto das câmaras e o tamanho
+ * do minimapa sempre que a janela do navegador for redimensionada.
  *
- * @param {object} resizeTargets - All renderers and cameras that need updating.
+ * @param {object} alvosRedimensionamento - Todos os renderizadores e câmaras a atualizar.
  */
-export function handleWindowResize({
-    renderer, perspectiveCamera, orthographicCamera,
-    minimapRenderer, minimapRoot,
-    mazeHeight
+export function tratarRedimensionamento({
+    renderizador, cameraPerspetiva, cameraTopDown,
+    renderizadorMinimapa, raizMinimapa,
+    alturaLabirinto
 }) {
-    const width  = window.innerWidth;
-    const height = window.innerHeight;
+    const largura = window.innerWidth;
+    const altura  = window.innerHeight;
 
-    // Resize the main canvas to fill the window
-    renderer.setSize(width, height);
+    // Redimensionar o canvas principal para preencher a janela
+    renderizador.setSize(largura, altura);
 
-    // Update perspective camera aspect ratio so objects are not stretched
-    perspectiveCamera.aspect = width / height;
-    perspectiveCamera.updateProjectionMatrix();
+    // Atualizar o rácio de aspeto da câmara de perspetiva para evitar deformação
+    cameraPerspetiva.aspect = largura / altura;
+    cameraPerspetiva.updateProjectionMatrix();
 
-    // Recalculate orthographic camera frustum for new aspect ratio
-    // so the top-down view always shows the full maze without stretching
-    const aspect = width / height;
-    const halfMazeHeightWithMargin = (mazeHeight + 2) * 0.5;
-    orthographicCamera.left   = -halfMazeHeightWithMargin * aspect;
-    orthographicCamera.right  =  halfMazeHeightWithMargin * aspect;
-    orthographicCamera.top    =  halfMazeHeightWithMargin;
-    orthographicCamera.bottom = -halfMazeHeightWithMargin;
-    orthographicCamera.updateProjectionMatrix();
+    // Recalcular o frustum da câmara ortogonal para o novo rácio de aspeto,
+    // de modo a mostrar sempre o labirinto completo sem deformação
+    const racioAspeto = largura / altura;
+    const metadeAltura = (alturaLabirinto + 2) * 0.5;
+    cameraTopDown.left   = -metadeAltura * racioAspeto;
+    cameraTopDown.right  =  metadeAltura * racioAspeto;
+    cameraTopDown.top    =  metadeAltura;
+    cameraTopDown.bottom = -metadeAltura;
+    cameraTopDown.updateProjectionMatrix();
 
-    // Resize the minimap canvas to match its DOM container size
-    if (minimapRenderer && minimapRoot) {
-        const minimapSize = minimapRoot.clientWidth || 160;
-        const devicePixelRatio = Math.min(window.devicePixelRatio, 2);
-        minimapRenderer.setPixelRatio(devicePixelRatio);
-        minimapRenderer.setSize(minimapSize, minimapSize, false);
+    // Redimensionar o canvas do minimapa para coincidir com o tamanho do seu contentor DOM
+    if (renderizadorMinimapa && raizMinimapa) {
+        const tamanhoMinimapa = raizMinimapa.clientWidth || 160;
+        const pixelRatio = Math.min(window.devicePixelRatio, 2);
+        renderizadorMinimapa.setPixelRatio(pixelRatio);
+        renderizadorMinimapa.setSize(tamanhoMinimapa, tamanhoMinimapa, false);
     }
 }

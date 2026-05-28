@@ -1,266 +1,271 @@
 // walllamp.js
-// Responsible for creating and placing wall lamps inside the maze.
+// Responsável por criar e posicionar candeeiros de parede no labirinto.
 //
-// A wall lamp is a small 3D lantern attached to a wall tile. It has:
-//   - A flat backing plate pressed against the wall surface
-//   - A short arm sticking outward
-//   - A hexagonal glass lantern body with metal frame
-//   - A glowing Edison bulb inside
-//   - A Three.js PointLight that illuminates the surrounding area
+// Um candeeiro de parede é uma lanterna hexagonal fixada numa parede.
+// É composto por:
+//   - Uma placa de apoio encostada à parede
+//   - Um braço curto que projeta a lanterna para fora
+//   - Um corpo hexagonal de vidro com moldura metálica
+//   - Uma lâmpada Edison luminosa no interior
+//   - Uma PointLight do Three.js que ilumina a área em redor
 //
-// The lamp geometry pieces are built once and shared (cached) between all
-// lamp instances so the GPU does not hold duplicate copies of the same shapes.
+// As geometrias (formas 3D) são criadas uma única vez e partilhadas
+// por todos os candeeiros, para não sobrecarregar a memória da placa gráfica.
 
 import * as THREE from 'three';
 
 // ─────────────────────────────────────────────────────────────
-// SHARED GEOMETRY CACHE
-// All lamp instances reuse the same geometry objects.
-// We rebuild the cache only if tileSize changes (which never
-// happens in practice — it is always 1).
+// CACHE DE RECURSOS PARTILHADOS
+// Todos os candeeiros reutilizam as mesmas geometrias e materiais.
+// O cache é reconstruído apenas se o tamanho da célula mudar
+// (o que na prática nunca acontece — é sempre 1).
 // ─────────────────────────────────────────────────────────────
 
-/** Stores the shared geometries and materials for a specific tileSize. */
-let cachedLampAssets = null;
+/** Guarda as geometrias e materiais partilhados para um determinado tamanho de célula. */
+let recursosCandeeiroCached = null;
 
 /**
- * Returns (or builds) the shared lamp geometry/material set for the given tile size.
- * @param {number} tileSize - Width of one maze tile in world units.
+ * Devolve (ou cria) o conjunto de geometrias e materiais partilhados para o tamanho de célula dado.
+ * @param {number} tamanhoCelula - Largura de uma célula do labirinto em unidades do mundo.
  */
-function getLampAssets(tileSize) {
-    if (cachedLampAssets && cachedLampAssets.tileSize === tileSize) {
-        return cachedLampAssets;
+function obterRecursosCandeeiro(tamanhoCelula) {
+    if (recursosCandeeiroCached && recursosCandeeiroCached.tamanhoCelula === tamanhoCelula) {
+        return recursosCandeeiroCached;
     }
 
-    // s is a shorthand so the measurements below are easier to read.
-    const s = tileSize;
+    // 'tam' é abreviatura de 'tamanhoCelula' para tornar as medidas abaixo mais legíveis
+    const tam = tamanhoCelula;
 
-    cachedLampAssets = {
-        tileSize,
+    recursosCandeeiroCached = {
+        tamanhoCelula,
 
-        // Flat backing plate pressed flat against the wall surface
-        plateGeometry:  new THREE.BoxGeometry(s * 0.12, s * 0.18, s * 0.03),
+        // Placa plana encostada à superfície da parede
+        geometriaPlaca:        new THREE.BoxGeometry(tam * 0.12, tam * 0.18, tam * 0.03),
 
-        // Short cylindrical arm that sticks outward from the plate
-        // (CylinderGeometry runs along Y; we rotate it 90° so it points along Z)
-        armGeometry:    new THREE.CylinderGeometry(s * 0.018, s * 0.024, s * 0.06, 8),
+        // Braço cilíndrico curto que projeta a lanterna para fora da parede
+        // (CylinderGeometry alinha-se com o eixo Y; rodamos 90° para apontar em +Z)
+        geometriaBraco:        new THREE.CylinderGeometry(tam * 0.018, tam * 0.024, tam * 0.06, 8),
 
-        // Hexagonal cup/neck that connects the arm to the lantern body
-        cupGeometry:    new THREE.CylinderGeometry(s * 0.040, s * 0.028, s * 0.05, 6),
+        // Copo / pescoço hexagonal que liga o braço ao corpo da lanterna
+        geometriaCopo:         new THREE.CylinderGeometry(tam * 0.040, tam * 0.028, tam * 0.05, 6),
 
-        // Decorative collar rings at the top and bottom of the lantern body
-        collarGeometry: new THREE.CylinderGeometry(s * 0.063, s * 0.063, s * 0.013, 6),
+        // Anéis decorativos no topo e na base do corpo da lanterna
+        geometriaColeira:      new THREE.CylinderGeometry(tam * 0.063, tam * 0.063, tam * 0.013, 6),
 
-        // Open hexagonal glass tube — the main lantern body (transparent)
-        glassGeometry:  new THREE.CylinderGeometry(s * 0.055, s * 0.055, s * 0.14, 6, 1, true),
+        // Tubo hexagonal de vidro aberto — o corpo principal da lanterna (transparente)
+        geometriaVidro:        new THREE.CylinderGeometry(tam * 0.055, tam * 0.055, tam * 0.14, 6, 1, true),
 
-        // Thin vertical bar placed at each of the 6 hex corners to frame the glass
-        edgeGeometry:   new THREE.CylinderGeometry(s * 0.007, s * 0.007, s * 0.14, 6),
+        // Barra vertical fina colocada em cada um dos 6 cantos hexagonais para emoldurar o vidro
+        geometriaAresta:       new THREE.CylinderGeometry(tam * 0.007, tam * 0.007, tam * 0.14, 6),
 
-        // Hexagonal pyramid cap on top of the lantern (tip points upward)
-        capGeometry:    new THREE.CylinderGeometry(0, s * 0.064, s * 0.065, 6),
+        // Tampa piramidal hexagonal no topo da lanterna (ponta para cima)
+        geometriaCapelo:       new THREE.CylinderGeometry(0, tam * 0.064, tam * 0.065, 6),
 
-        // Small decorative sphere at the very top of the cap
-        finialGeometry: new THREE.SphereGeometry(s * 0.018, 8, 6),
+        // Pequena esfera decorativa no vértice da tampa
+        geometriaEsferaDecorativa: new THREE.SphereGeometry(tam * 0.018, 8, 6),
 
-        // The glowing Edison-style bulb inside the lantern
-        bulbGeometry:   new THREE.SphereGeometry(s * 0.028, 10, 7),
+        // Lâmpada Edison luminosa no interior da lanterna
+        geometriaLampada:      new THREE.SphereGeometry(tam * 0.028, 10, 7),
 
-        // Dark bronze/iron material for all metal parts
-        metalMaterial: new THREE.MeshStandardMaterial({
+        // Material escuro de bronze/ferro para todas as partes metálicas
+        materialMetal: new THREE.MeshStandardMaterial({
             color: 0x3a2510, roughness: 0.55, metalness: 0.45
         }),
 
-        // Semi-transparent material for the glass tube
-        glassMaterial: new THREE.MeshStandardMaterial({
+        // Material semitransparente para o tubo de vidro
+        materialVidro: new THREE.MeshStandardMaterial({
             color: 0xfff3d0, roughness: 0.05, metalness: 0.0,
             transparent: true, opacity: 0.25, side: THREE.DoubleSide
         }),
 
-        // Warm emissive material that makes the bulb look lit from inside
-        bulbMaterial: new THREE.MeshStandardMaterial({
+        // Material emissivo quente que faz a lâmpada parecer acesa por dentro
+        materialLampada: new THREE.MeshStandardMaterial({
             color: 0xfff1c1, emissive: 0xffb347, emissiveIntensity: 1.4
         }),
     };
 
-    return cachedLampAssets;
+    return recursosCandeeiroCached;
 }
 
 // ─────────────────────────────────────────────────────────────
-// SINGLE LAMP CREATION
+// CRIAÇÃO DE UM ÚNICO CANDEEIRO
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Builds one complete wall lamp as a Three.js Group.
- * The group's local origin sits at the wall surface — position and
- * rotation are set by the caller (placeWallLamps).
+ * Constrói um candeeiro de parede completo como um Group do Three.js.
+ * A origem local do grupo fica na superfície da parede.
+ * A posição e rotação são definidas pela função que chama esta (colocarCandeeirosParede).
  *
- * @param {number} tileSize        - Width of one maze tile in world units.
- * @param {number} lightColor      - Hex color of the emitted point light.
- * @param {number} lightIntensity  - Brightness of the point light.
- * @returns {{ group: THREE.Group, light: THREE.PointLight }}
+ * @param {number} tamanhoCelula  - Largura de uma célula em unidades do mundo.
+ * @param {number} corLuz         - Cor hexadecimal da luz pontual emitida.
+ * @param {number} intensidadeLuz - Brilho da luz pontual.
+ * @returns {{ grupo: THREE.Group, luz: THREE.PointLight }}
  */
-function createWallLamp(tileSize, lightColor = 0xffd9a8, lightIntensity = 1.1) {
-    const assets = getLampAssets(tileSize);
-    const s = tileSize;
-    const group = new THREE.Group();
+function criarCandeeiroParede(tamanhoCelula, corLuz = 0xffd9a8, intensidadeLuz = 1.1) {
+    const recursos = obterRecursosCandeeiro(tamanhoCelula);
+    const tam = tamanhoCelula;
+    const grupo = new THREE.Group();
 
-    // --- Backing plate (lies flat against the wall) ---
-    const plate = new THREE.Mesh(assets.plateGeometry, assets.metalMaterial);
-    plate.position.set(0, 0, s * 0.015);
-    group.add(plate);
+    // --- Placa de apoio (encostada à parede) ---
+    const placa = new THREE.Mesh(recursos.geometriaPlaca, recursos.materialMetal);
+    placa.position.set(0, 0, tam * 0.015);
+    grupo.add(placa);
 
-    // --- Arm (rotated so the cylinder points outward in +Z) ---
-    const arm = new THREE.Mesh(assets.armGeometry, assets.metalMaterial);
-    arm.rotation.x = Math.PI / 2;
-    arm.position.set(0, -s * 0.025, s * 0.030);
-    group.add(arm);
+    // --- Braço (rodado para o cilindro apontar para fora em +Z) ---
+    const braco = new THREE.Mesh(recursos.geometriaBraco, recursos.materialMetal);
+    braco.rotation.x = Math.PI / 2;
+    braco.position.set(0, -tam * 0.025, tam * 0.030);
+    grupo.add(braco);
 
-    // --- Cup / neck between arm and lantern body ---
-    const cup = new THREE.Mesh(assets.cupGeometry, assets.metalMaterial);
-    cup.position.set(0, s * 0.015, s * 0.075);
-    group.add(cup);
+    // --- Copo / pescoço entre o braço e o corpo da lanterna ---
+    const copo = new THREE.Mesh(recursos.geometriaCopo, recursos.materialMetal);
+    copo.position.set(0, tam * 0.015, tam * 0.075);
+    grupo.add(copo);
 
-    // Z position where the lantern body is centered (close to but not touching the wall)
-    const lanternZ = s * 0.085;
+    // Posição Z onde o corpo da lanterna está centrado (perto mas sem tocar a parede)
+    const posicaoZLanterna = tam * 0.085;
 
-    // Y positions that stack the lantern body parts from bottom to top
-    const bodyBottomY  = s * 0.040;
-    const bodyCenterY  = bodyBottomY + s * 0.070;  // midpoint of the glass tube
-    const bodyTopY     = bodyBottomY + s * 0.140;  // top edge of the glass tube
+    // Posições Y que empilham as peças da lanterna de baixo para cima
+    const yBaseCorpo  = tam * 0.040;
+    const yCentroCorpo = yBaseCorpo + tam * 0.070;  // ponto médio do tubo de vidro
+    const yTopoCorpo   = yBaseCorpo + tam * 0.140;  // bordo superior do tubo de vidro
 
-    // --- Bottom collar ring ---
-    const bottomCollar = new THREE.Mesh(assets.collarGeometry, assets.metalMaterial);
-    bottomCollar.position.set(0, bodyBottomY, lanternZ);
-    group.add(bottomCollar);
+    // --- Coleira inferior ---
+    const coleiraInferior = new THREE.Mesh(recursos.geometriaColeira, recursos.materialMetal);
+    coleiraInferior.position.set(0, yBaseCorpo, posicaoZLanterna);
+    grupo.add(coleiraInferior);
 
-    // --- Hexagonal glass tube (the main lantern body) ---
-    const glass = new THREE.Mesh(assets.glassGeometry, assets.glassMaterial);
-    glass.position.set(0, bodyCenterY, lanternZ);
-    group.add(glass);
+    // --- Tubo de vidro hexagonal (corpo principal da lanterna) ---
+    const vidro = new THREE.Mesh(recursos.geometriaVidro, recursos.materialVidro);
+    vidro.position.set(0, yCentroCorpo, posicaoZLanterna);
+    grupo.add(vidro);
 
-    // --- Six metal edge bars, one at each corner of the hex cross-section ---
-    const edgeRadius = s * 0.055;
-    for (let cornerIndex = 0; cornerIndex < 6; cornerIndex += 1) {
-        const angle = (cornerIndex / 6) * Math.PI * 2;
-        const edge = new THREE.Mesh(assets.edgeGeometry, assets.metalMaterial);
-        edge.position.set(
-            Math.sin(angle) * edgeRadius,
-            bodyCenterY,
-            lanternZ + Math.cos(angle) * edgeRadius
+    // --- Seis barras metálicas, uma em cada canto da secção hexagonal ---
+    const raioArestas = tam * 0.055;
+    for (let i = 0; i < 6; i += 1) {
+        const angulo = (i / 6) * Math.PI * 2;
+        const aresta = new THREE.Mesh(recursos.geometriaAresta, recursos.materialMetal);
+        aresta.position.set(
+            Math.sin(angulo) * raioArestas,
+            yCentroCorpo,
+            posicaoZLanterna + Math.cos(angulo) * raioArestas
         );
-        group.add(edge);
+        grupo.add(aresta);
     }
 
-    // --- Top collar ring ---
-    const topCollar = new THREE.Mesh(assets.collarGeometry, assets.metalMaterial);
-    topCollar.position.set(0, bodyTopY, lanternZ);
-    group.add(topCollar);
+    // --- Coleira superior ---
+    const coleiraSuperior = new THREE.Mesh(recursos.geometriaColeira, recursos.materialMetal);
+    coleiraSuperior.position.set(0, yTopoCorpo, posicaoZLanterna);
+    grupo.add(coleiraSuperior);
 
-    // --- Pyramid cap (flat base at bodyTopY, tip pointing upward) ---
-    const cap = new THREE.Mesh(assets.capGeometry, assets.metalMaterial);
-    cap.position.set(0, bodyTopY + s * 0.0325, lanternZ);
-    group.add(cap);
+    // --- Tampa piramidal (base plana no yTopoCorpo, ponta aponta para cima) ---
+    const capelo = new THREE.Mesh(recursos.geometriaCapelo, recursos.materialMetal);
+    capelo.position.set(0, yTopoCorpo + tam * 0.0325, posicaoZLanterna);
+    grupo.add(capelo);
 
-    // --- Small decorative sphere at the very tip of the cap ---
-    const finial = new THREE.Mesh(assets.finialGeometry, assets.metalMaterial);
-    finial.position.set(0, bodyTopY + s * 0.083, lanternZ);
-    group.add(finial);
+    // --- Pequena esfera decorativa no vértice da tampa ---
+    const esferaDecorativa = new THREE.Mesh(recursos.geometriaEsferaDecorativa, recursos.materialMetal);
+    esferaDecorativa.position.set(0, yTopoCorpo + tam * 0.083, posicaoZLanterna);
+    grupo.add(esferaDecorativa);
 
-    // --- Glowing Edison bulb inside the lantern ---
-    const bulb = new THREE.Mesh(assets.bulbGeometry, assets.bulbMaterial);
-    bulb.position.set(0, bodyCenterY, lanternZ);
-    group.add(bulb);
+    // --- Lâmpada Edison luminosa no interior da lanterna ---
+    const lampada = new THREE.Mesh(recursos.geometriaLampada, recursos.materialLampada);
+    lampada.position.set(0, yCentroCorpo, posicaoZLanterna);
+    grupo.add(lampada);
 
-    // --- Point light that illuminates the surrounding area ---
-    // Distance 3 tiles, quadratic falloff (decay = 2)
-    const light = new THREE.PointLight(lightColor, lightIntensity, s * 3.0, 2);
-    light.position.set(0, bodyCenterY, lanternZ);
-    group.add(light);
+    // --- Luz pontual que ilumina a área em redor (raio de 3 células, queda quadrática) ---
+    const luz = new THREE.PointLight(corLuz, intensidadeLuz, tam * 3.0, 2);
+    luz.position.set(0, yCentroCorpo, posicaoZLanterna);
+    grupo.add(luz);
 
-    return { group, light };
+    return { grupo, luz };
 }
 
 // ─────────────────────────────────────────────────────────────
-// LAMP PLACEMENT
+// COLOCAÇÃO DOS CANDEEIROS
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Creates and positions wall lamps at specific locations in the maze.
- * Each placement specifies a walkable tile and which of its four walls
- * (north / south / east / west) the lamp should be mounted on.
+ * Cria e posiciona candeeiros de parede em locais específicos do labirinto.
+ * Cada posição indica uma célula caminhável e em qual das quatro paredes
+ * (norte / sul / este / oeste) o candeeiro deve ser montado.
  *
- * The function skips any placement where the requested wall tile does not
- * actually exist (value === 1) in mazeLayout, printing a warning instead.
+ * A função ignora qualquer posição onde a parede solicitada não existe
+ * no layoutLabirinto, imprimindo um aviso em vez disso.
  *
- * @param {object} options
- * @param {number[][]}    options.mazeLayout     - 2D grid: 1 = wall, 0 = walkable.
- * @param {number}        options.tileSize       - World-unit size of one tile.
- * @param {number}        options.wallHeight     - Height of wall tiles.
- * @param {THREE.Object3D} options.targetGroup   - Three.js group to add lamps into.
- * @param {object[]}      options.placements     - Array of { row, column, wall } objects.
- * @param {number}        [options.lightColor]   - Hex color for all lamp lights.
- * @param {number}        [options.lightIntensity] - Brightness for all lamp lights.
+ * @param {object}        opcoes
+ * @param {number[][]}    opcoes.layoutLabirinto  - Grelha 2D: 1 = parede, 0 = caminhável.
+ * @param {number}        opcoes.tamanhoCelula    - Tamanho em unidades do mundo de uma célula.
+ * @param {number}        opcoes.alturaParede     - Altura das paredes.
+ * @param {THREE.Object3D} opcoes.grupoDestino    - Grupo do Three.js onde os candeeiros são adicionados.
+ * @param {object[]}      opcoes.posicoes         - Array de { row, column, wall }.
+ * @param {number}        [opcoes.corLuz]         - Cor hexadecimal da luz de todos os candeeiros.
+ * @param {number}        [opcoes.intensidadeLuz] - Brilho da luz de todos os candeeiros.
  */
-export function placeWallLamps({ mazeLayout, tileSize, wallHeight, targetGroup, placements, lightColor = 0xffd9a8, lightIntensity = 1.1 }) {
-    if (!mazeLayout || !targetGroup || !Array.isArray(placements)) {
+export function colocarCandeeirosParede({ layoutLabirinto, tamanhoCelula, alturaParede, grupoDestino, posicoes, corLuz = 0xffd9a8, intensidadeLuz = 1.1 }) {
+    if (!layoutLabirinto || !grupoDestino || !Array.isArray(posicoes)) {
         return;
     }
 
-    const rows    = mazeLayout.length;
-    const columns = mazeLayout[0]?.length ?? 0;
+    const numLinhas  = layoutLabirinto.length;
+    const numColunas = layoutLabirinto[0]?.length ?? 0;
 
-    // For each compass direction: which neighbor tile must be a wall,
-    // which way the lamp faces, and the Y rotation to apply to the group.
-    const wallDirections = {
-        north: { neighborRow: -1, neighborCol:  0, normalX:  0, normalZ: -1, rotationY: 0 },
-        south: { neighborRow:  1, neighborCol:  0, normalX:  0, normalZ:  1, rotationY: Math.PI },
-        west:  { neighborRow:  0, neighborCol: -1, normalX: -1, normalZ:  0, rotationY: Math.PI / 2 },
-        east:  { neighborRow:  0, neighborCol:  1, normalX:  1, normalZ:  0, rotationY: -Math.PI / 2 }
+    // Para cada ponto cardeal: qual célula vizinha deve ser parede,
+    // para que lado a lanterna aponta, e a rotação Y a aplicar ao grupo.
+    const direcoesParede = {
+        norte: { linhaVizinha: -1, colunaVizinha:  0, normalX:  0, normalZ: -1, rotacaoY: 0 },
+        sul:   { linhaVizinha:  1, colunaVizinha:  0, normalX:  0, normalZ:  1, rotacaoY: Math.PI },
+        oeste: { linhaVizinha:  0, colunaVizinha: -1, normalX: -1, normalZ:  0, rotacaoY: Math.PI / 2 },
+        este:  { linhaVizinha:  0, colunaVizinha:  1, normalX:  1, normalZ:  0, rotacaoY: -Math.PI / 2 }
     };
 
-    // Track already-placed lamp positions so we don't place two lamps at the same spot.
-    const placedKeys = new Set();
+    // Regista as posições já usadas para evitar dois candeeiros no mesmo sítio
+    const posicoesUsadas = new Set();
 
-    const isSolidWall = (row, column) =>
-        row >= 0 && row < rows &&
-        column >= 0 && column < columns &&
-        mazeLayout[row][column] === 1;
+    const eParedeSolida = (linha, coluna) =>
+        linha >= 0 && linha < numLinhas &&
+        coluna >= 0 && coluna < numColunas &&
+        layoutLabirinto[linha][coluna] === 1;
 
-    for (const placement of placements) {
-        const { row, column } = placement;
-        const directionName = String(placement.wall ?? '').trim().toLowerCase();
-        const direction = wallDirections[directionName];
+    for (const posicao of posicoes) {
+        const { row: linha, column: coluna } = posicao;
 
-        // Skip if the placement has invalid data
-        if (!direction || !Number.isInteger(row) || !Number.isInteger(column)) {
+        // Aceitar nomes em inglês (north/south/east/west) para compatibilidade com os dados existentes
+        const nomeDirecaoEN  = String(posicao.wall ?? '').trim().toLowerCase();
+        // Mapear inglês → português para aceder a direcoesParede
+        const mapaInglesParaPortugues = { north: 'norte', south: 'sul', east: 'este', west: 'oeste' };
+        const nomeDirecao = mapaInglesParaPortugues[nomeDirecaoEN] ?? nomeDirecaoEN;
+        const direcao = direcoesParede[nomeDirecao];
+
+        // Ignorar entradas com dados inválidos
+        if (!direcao || !Number.isInteger(linha) || !Number.isInteger(coluna)) {
             continue;
         }
 
-        // Skip duplicates
-        const placementKey = `${row},${column},${directionName}`;
-        if (placedKeys.has(placementKey)) {
+        // Ignorar duplicados
+        const chaveUnica = `${linha},${coluna},${nomeDirecao}`;
+        if (posicoesUsadas.has(chaveUnica)) {
             continue;
         }
-        placedKeys.add(placementKey);
+        posicoesUsadas.add(chaveUnica);
 
-        // Skip if there is no wall tile in the requested direction
-        const wallRow = row + direction.neighborRow;
-        const wallCol = column + direction.neighborCol;
-        if (!isSolidWall(wallRow, wallCol)) {
-            console.warn('Skipped lamp — no wall tile at requested direction:', { row, column, wall: directionName });
+        // Ignorar se não existir parede na direção pedida
+        const linhaParede  = linha  + direcao.linhaVizinha;
+        const colunaParede = coluna + direcao.colunaVizinha;
+        if (!eParedeSolida(linhaParede, colunaParede)) {
+            console.warn('Candeeiro ignorado — sem parede vizinha:', { linha, coluna, direcao: nomeDirecao });
             continue;
         }
 
-        const { group } = createWallLamp(tileSize, lightColor, lightIntensity);
+        const { grupo } = criarCandeeiroParede(tamanhoCelula, corLuz, intensidadeLuz);
 
-        // Push the lamp slightly away from the wall center so it sits on the surface
-        const surfaceOffset = tileSize * 0.5 - tileSize * 0.08;
-        const worldX = column * tileSize + direction.normalX * surfaceOffset;
-        const worldZ = row    * tileSize + direction.normalZ * surfaceOffset;
+        // Empurrar o candeeiro ligeiramente para fora do centro da parede para ficar na superfície
+        const deslocamentoSuperficie = tamanhoCelula * 0.5 - tamanhoCelula * 0.08;
+        const xMundo = coluna * tamanhoCelula + direcao.normalX * deslocamentoSuperficie;
+        const zMundo = linha  * tamanhoCelula + direcao.normalZ * deslocamentoSuperficie;
 
-        group.position.set(worldX, wallHeight * 0.72, worldZ);
-        group.rotation.y = direction.rotationY;
-        targetGroup.add(group);
+        grupo.position.set(xMundo, alturaParede * 0.72, zMundo);
+        grupo.rotation.y = direcao.rotacaoY;
+        grupoDestino.add(grupo);
     }
 }

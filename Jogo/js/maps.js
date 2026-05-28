@@ -1,7 +1,27 @@
+// maps.js
+// Responsável pelas texturas visuais e pelas configurações dos mapas do jogo.
+//
+// Contém:
+//   - Funções de geração de texturas (paredes e chãos) para cada mapa
+//   - drawMapThumbnail → desenha a miniatura de pré-visualização de cada mapa
+//   - MAP_CONFIGS → objeto com as definições completas dos três mapas:
+//       hotel     (Hotel Abandonado — fantasmas)
+//       labirinto (Jardim de Arbustos — cães)
+//       fabrica   (Fábrica Abandonada — robôs)
+
 import * as THREE from 'three';
 
+// Carregador partilhado para todas as texturas carregadas de ficheiro
 const textureLoader = new THREE.TextureLoader();
 
+// ─────────────────────────────────────────────────────────────
+// TEXTURAS DAS PAREDES
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Carrega a textura de parede de sebe usada no mapa Labirinto.
+ * A imagem repete-se horizontalmente para cobrir paredes compridas.
+ */
 export function createHedgeWallTexture() {
     const texture = textureLoader.load('.\\Imagens\\Mapas\\Labirinto\\wall_textura.jpg');
     texture.wrapS = THREE.RepeatWrapping;
@@ -11,6 +31,18 @@ export function createHedgeWallTexture() {
     return texture;
 }
 
+// ─────────────────────────────────────────────────────────────
+// TEXTURAS DOS CHÃOS
+// Geradas proceduralmente num canvas 2D para não depender de ficheiros externos.
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Gera proceduralmente uma textura de relva para o chão do mapa Labirinto.
+ * Pinta uma base verde, adiciona brins de relva aleatórios, manchas de sombra
+ * e ruído de pixéis para variedade.
+ *
+ * @param {number} size - Largura e altura da textura em pixéis (padrão: 512).
+ */
 export function createGrassFloorTexture(size = 512) {
     const canvas = document.createElement('canvas');
     canvas.width = size;
@@ -56,6 +88,13 @@ export function createGrassFloorTexture(size = 512) {
     return texture;
 }
 
+/**
+ * Gera proceduralmente uma textura de parede de betão para o mapa Fábrica.
+ * Desenha fiadas de blocos de betão com juntas escuras, manchas de ferrugem
+ * e fissuras verticais irregulares.
+ *
+ * @param {number} size - Largura e altura da textura em pixéis (padrão: 256).
+ */
 export function createConcreteWallTexture(size = 256) {
     const canvas = document.createElement('canvas');
     canvas.width = size;
@@ -124,6 +163,13 @@ export function createConcreteWallTexture(size = 256) {
     return texture;
 }
 
+/**
+ * Gera proceduralmente uma textura de chão metálico quadriculado para o mapa Fábrica.
+ * Desenha uma grelha de vigas de metal, parafusos radiais em cada cruzamento
+ * e manchas de óleo escuras.
+ *
+ * @param {number} size - Largura e altura da textura em pixéis (padrão: 512).
+ */
 export function createMetalFloorTexture(size = 512) {
     const canvas = document.createElement('canvas');
     canvas.width = size;
@@ -195,6 +241,13 @@ export function createMetalFloorTexture(size = 512) {
     return texture;
 }
 
+/**
+ * Gera proceduralmente uma textura de parede de hotel para o mapa Hotel.
+ * Base vermelha escura com gradiente de luz e ruído de pixéis para aparência
+ * de papel de parede desgastado.
+ *
+ * @param {number} size - Largura e altura da textura em pixéis (padrão: 256).
+ */
 export function createHotelWallTexture(size = 256) {
     const canvas = document.createElement('canvas');
     canvas.width = size;
@@ -229,6 +282,13 @@ export function createHotelWallTexture(size = 256) {
     return texture;
 }
 
+/**
+ * Gera proceduralmente uma textura de chão de hotel em azulejo losangular
+ * dourado/castanho para o mapa Hotel.
+ * Cada azulejo tem dois losangos concêntricos com contorno escuro.
+ *
+ * @param {number} size - Largura e altura da textura em pixéis (padrão: 512).
+ */
 export function createHotelFloorTexture(size = 512) {
     const canvas = document.createElement('canvas');
     canvas.width = size;
@@ -297,6 +357,18 @@ export function createHotelFloorTexture(size = 512) {
     return texture;
 }
 
+// ─────────────────────────────────────────────────────────────
+// MINIATURA DE PRÉ-VISUALIZAÇÃO
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Desenha uma miniatura de pré-visualização do mapa num canvas 2D.
+ * Cada mapa tem um aspeto distinto: Hotel com candeeiro quente, Labirinto
+ * com raio de sol, Fábrica com névoa alaranjada e barril de fogo.
+ *
+ * @param {HTMLCanvasElement} canvas - O canvas onde desenhar (tamanho já definido externamente).
+ * @param {object}            config - A configuração do mapa (da MAP_CONFIGS).
+ */
 export function drawMapThumbnail(canvas, config) {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -399,6 +471,13 @@ export function drawMapThumbnail(canvas, config) {
     ctx.fillRect(0, h - 4, s, 4);
     ctx.globalAlpha = 1;
 }
+
+// ─────────────────────────────────────────────────────────────
+// CONFIGURAÇÕES DOS MAPAS
+// Cada objeto define tudo o que muda entre mapas: cores, luzes, névoa,
+// tipo de inimigo e texturas. main.js lê estas configurações para
+// construir a cena correta ao iniciar o jogo.
+// ─────────────────────────────────────────────────────────────
 
 export const MAP_CONFIGS = {
     hotel: {

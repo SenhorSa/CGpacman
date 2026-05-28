@@ -1,5 +1,22 @@
+// characters.js
+// Responsável por todos os personagens do jogo: jogador, inimigos e moedas.
+//
+// Contém:
+//   CONFIGURAÇÕES  — velocidades, tamanhos e parâmetros dos personagens
+//   IA DOS INIMIGOS — algoritmos de navegação (roam, chase, flee, return)
+//   MODELOS 3D/2D  — geometria de fantasmas, cães, robôs, Pacman e moedas
+//   JOGADOR        — movimentação e câmara em perspetiva e ortogonal
+//   MOEDAS         — criação, animação e recolha
+//   EXPORTS        — todas as funções que o main.js e o menu.js usam
+
 import * as THREE from 'three';
 import { findSpawnCell, isWalkableAt } from './maze.js';
+
+// ─────────────────────────────────────────────────────────────
+// CONFIGURAÇÕES
+// Alterar estes valores muda a sensação de velocidade e tamanho
+// dos personagens em todos os mapas.
+// ─────────────────────────────────────────────────────────────
 
 export const playerSettings = {
     moveSpeed: 2.4,
@@ -8,6 +25,7 @@ export const playerSettings = {
     mouseSensitivity: 0.0025
 };
 
+// Parâmetros partilhados por todos os tipos de inimigos (fantasma, cão, robô)
 export const ghostSettings = {
     radiusRatio: 0.22,
     spacingUnits: 2,
@@ -16,6 +34,7 @@ export const ghostSettings = {
     faceTurnSpeed: 7.0
 };
 
+// Parâmetros de animação e tamanho das moedas
 export const coinSettings = {
     radiusRatio: 0.11,
     baseHeight: 0.2,
@@ -23,6 +42,7 @@ export const coinSettings = {
     floatSpeed: 2.4
 };
 
+// Cores base de cada tipo de inimigo (usadas para repor a cor após o modo assustado)
 const ghostColors = {
     blue: 0x05a4fa,
     red: 0xdc2626,
@@ -30,6 +50,7 @@ const ghostColors = {
     pink: 0xec4899
 };
 
+// Cor azul escuro que os inimigos ficam durante o modo poder (assustados)
 const ghostFrightenedColor = 0x1e3a8a;
 
 const dogColors = {
@@ -46,6 +67,14 @@ const robotColors = {
     slateGrey: 0x504858
 };
 
+// ─────────────────────────────────────────────────────────────
+// IA DOS INIMIGOS — NAVEGAÇÃO NA GRELHA
+// Os inimigos movem-se célula a célula. Em cada cruzamento escolhem
+// a próxima direção com base no modo atual: roam (aleatório),
+// chase (perseguir), flee (fugir) ou return (voltar ao centro via BFS).
+// ─────────────────────────────────────────────────────────────
+
+// As quatro direções ortogonais possíveis na grelha
 const cardinalDirections = [
     { row: -1, column: 0 },
     { row: 1, column: 0 },
@@ -53,6 +82,10 @@ const cardinalDirections = [
     { row: 0, column: 1 }
 ];
 
+/**
+ * Cria o objeto de estado dos controlos do jogador.
+ * Os campos booleanos são definidos a true/false pelos event listeners de teclado.
+ */
 function createControls() {
     return {
         forward: false,
@@ -68,10 +101,16 @@ function createControls() {
     };
 }
 
+/**
+ * Verifica se (row, column) está dentro dos limites da grelha.
+ */
 function isInsideGrid(layout, row, column) {
     return row >= 0 && row < layout.length && column >= 0 && column < layout[0].length;
 }
 
+/**
+ * Converte uma posição no mundo (coordenadas contínuas) para célula da grelha (inteiros).
+ */
 function worldToCell(worldX, worldZ, tileSize) {
     return {    
         row: Math.round(worldZ / tileSize),
@@ -83,10 +122,16 @@ function isWalkableCell(layout, row, column) {
     return isInsideGrid(layout, row, column) && layout[row][column] === 0;
 }
 
+/**
+ * Converte uma direção {row, column} numa chave de texto para comparação.
+ */
 function directionKey(direction) {
     return `${direction.row},${direction.column}`;
 }
 
+/**
+ * Devolve a direção oposta (ex: {row:-1, column:0} → {row:1, column:0}).
+ */
 function oppositeDirection(direction) {
     return {
         row: -direction.row,
@@ -94,6 +139,10 @@ function oppositeDirection(direction) {
     };
 }
 
+/**
+ * Devolve todas as direções ortogonais a partir de (row, column) que são caminháveis.
+ * Exclui a caixa central se o inimigo já a tiver abandonado (blockCenterBox).
+ */
 function getAvailableDirections(mazeLayout, row, column, options = {}) {
     const directions = [];
     const {
@@ -123,6 +172,10 @@ function getAvailableDirections(mazeLayout, row, column, options = {}) {
     return directions;
 }
 
+/**
+ * Verifica se o inimigo está suficientemente próximo do centro de uma célula
+ * para poder virar. Usa um limiar de 8% do tamanho da célula.
+ */
 function isNearCellCenter(position, tileSize) {
     const cellX = Math.round(position.x / tileSize) * tileSize;
     const cellZ = Math.round(position.z / tileSize) * tileSize;
@@ -131,10 +184,18 @@ function isNearCellCenter(position, tileSize) {
     return Math.abs(position.x - cellX) <= threshold && Math.abs(position.z - cellZ) <= threshold;
 }
 
+/**
+ * Verifica se (row, column) está dentro da caixa 3×3 à volta do centro do labirinto.
+ * Os inimigos não devem voltar a entrar nesta área depois de a terem deixado.
+ */
 function isInsideCenterBox(row, column, centerMarkerCell) {
     return Math.abs(row - centerMarkerCell.row) <= 1 && Math.abs(column - centerMarkerCell.column) <= 1;
 }
 
+/**
+ * MODO ROAM — escolhe uma direção aleatória entre as disponíveis.
+ * Usado quando os inimigos estão a vaguear pelo labirinto.
+ */
 function pickGhostDirection(ghost, mazeLayout, tileSize, options = {}) {
     const { row, column } = worldToCell(ghost.position.x, ghost.position.z, tileSize);
     const availableDirections = getAvailableDirections(mazeLayout, row, column, {
@@ -150,6 +211,10 @@ function pickGhostDirection(ghost, mazeLayout, tileSize, options = {}) {
     return availableDirections[Math.floor(Math.random() * availableDirections.length)];
 }
 
+/**
+ * MODO CHASE — escolhe a direção que minimiza a distância até targetCell.
+ * Evita inverter a marcha sempre que possível (impede o inimigo de andar para trás).
+ */
 function pickChaseDirection(ghost, mazeLayout, tileSize, targetCell, options = {}) {
     const { row, column } = worldToCell(ghost.position.x, ghost.position.z, tileSize);
     const availableDirections = getAvailableDirections(mazeLayout, row, column, {
@@ -194,6 +259,10 @@ function pickChaseDirection(ghost, mazeLayout, tileSize, targetCell, options = {
     return bestAnyDirection;
 }
 
+/**
+ * MODO FLEE — escolhe a direção que maximiza a distância até targetCell.
+ * Usado durante o modo poder quando os inimigos fogem do jogador.
+ */
 function pickFleeDirection(ghost, mazeLayout, tileSize, targetCell, options = {}) {
     const { row, column } = worldToCell(ghost.position.x, ghost.position.z, tileSize);
     const availableDirections = getAvailableDirections(mazeLayout, row, column, {
@@ -224,6 +293,11 @@ function pickFleeDirection(ghost, mazeLayout, tileSize, targetCell, options = {}
     return bestAnyDirection;
 }
 
+/**
+ * MODO RETURN — encontra o caminho mais curto até targetCell usando BFS.
+ * Usado quando o jogador come um inimigo e este tem de regressar ao centro.
+ * Se o BFS não conseguir chegar ao alvo, recorre ao modo chase como fallback.
+ */
 function pickShortestPathDirection(ghost, mazeLayout, tileSize, targetCell, options = {}) {
     const { row: startRow, column: startColumn } = worldToCell(ghost.position.x, ghost.position.z, tileSize);
     const { blockCenterBox, centerMarkerCell } = options;
@@ -287,6 +361,15 @@ function pickShortestPathDirection(ghost, mazeLayout, tileSize, targetCell, opti
     };
 }
 
+/**
+ * Move um inimigo um passo no tempo deltaSeconds usando o modo de IA dado.
+ * Lógica principal:
+ *   1. Se ainda não tem direção, escolhe uma.
+ *   2. Ao aproximar-se do centro de uma célula (cruzamento), reavalia a direção.
+ *   3. Tenta avançar; se colidir com parede, escolhe nova direção.
+ *   4. Ao mover na horizontal, alinha o eixo Z; ao mover na vertical, alinha o X.
+ *      (Isto mantém o inimigo centrado nos corredores.)
+ */
 function tryMoveGhost(ghost, mazeLayout, tileSize, deltaSeconds, centerMarkerCell, mode, targetCell) {
     const currentDirection = ghost.userData.direction ?? { row: 0, column: 0 };
     const blockCenterBox = mode === 'return' ? false : (ghost.userData.hasLeftBox ?? false);
@@ -378,6 +461,10 @@ function tryMoveGhost(ghost, mazeLayout, tileSize, deltaSeconds, centerMarkerCel
     ghost.userData.direction = pickGhostDirection(ghost, mazeLayout, tileSize, directionOptions);
 }
 
+/**
+ * Verifica se a posição (nextX, nextZ) do jogador está a colidir com algum inimigo.
+ * A colisão é círculo-a-círculo: soma dos raios vs distância entre centros.
+ */
 function collidesWithGhosts(ghosts, nextX, nextZ, playerRadius) {
     if (!ghosts || ghosts.length === 0) {
         return false;
@@ -397,10 +484,25 @@ function collidesWithGhosts(ghosts, nextX, nextZ, playerRadius) {
     return false;
 }
 
+/**
+ * Verifica se o jogador pode mover-se para (nextX, nextZ) sem colidir com paredes.
+ */
 function canMoveTo(mazeLayout, nextX, nextZ) {
     return isWalkableAt(mazeLayout, nextX, nextZ, playerSettings.playerRadius);
 }
 
+// ─────────────────────────────────────────────────────────────
+// MODELOS 3D DOS INIMIGOS
+// Cada tipo de inimigo tem um modelo 3D para a vista de perspetiva
+// e um sprite 2D plano para a vista de topo e o minimapa.
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Constrói o modelo 3D de um fantasma: corpo em LatheGeometry com ondas na saia,
+ * olhos brancos com pupila escura, tudo num Group.
+ * userData.bodyMaterial, bodyParts, eyeParts e faceGroup permitem mudar
+ * a cor e visibilidade durante o modo poder.
+ */
 function buildGhost3D(color, tileSize) {
     const group = new THREE.Group();
     const radius = tileSize * ghostSettings.radiusRatio;
@@ -495,6 +597,10 @@ function buildGhost3D(color, tileSize) {
     return group;
 }
 
+/**
+ * Constrói o sprite 2D de um fantasma (círculo + retângulo + olhos).
+ * Roda -90° em X para ficar deitado no chão (vista de topo).
+ */
 function buildGhost2D(color, tileSize) {
     const group = new THREE.Group();
     const radius = tileSize * ghostSettings.radiusRatio;
@@ -529,6 +635,11 @@ function buildGhost2D(color, tileSize) {
     return group;
 }
 
+/**
+ * Constrói o modelo 3D de um cão: torso, pescoço, cabeça, focinho, orelhas
+ * pontiagudas, dentes, olhos leitosos e quatro pernas animadas em trote diagonal.
+ * userData.legGroups contém os quatro grupos de perna com fase de oscilação.
+ */
 function buildDog3D(color, tileSize) {
     const group = new THREE.Group();
     const r = tileSize * ghostSettings.radiusRatio;
@@ -707,6 +818,10 @@ function buildDog3D(color, tileSize) {
     return group;
 }
 
+/**
+ * Constrói o sprite 2D de um cão visto de cima: corpo oval, cabeça, orelhas,
+ * focinho, olhos e nariz. Roda -90° em X para ficar no chão.
+ */
 function buildDog2D(color, tileSize) {
     const group = new THREE.Group();
     const r = tileSize * ghostSettings.radiusRatio;
@@ -768,6 +883,11 @@ function buildDog2D(color, tileSize) {
     return group;
 }
 
+/**
+ * Constrói o modelo 3D de um robô humanoide: pernas, pélvis, abdómen, peito,
+ * pescoço, cabeça esférica com viseira brilhante, antena e dois braços articulados.
+ * userData.legGroups inclui pernas E braços com fases de oscilação para andar.
+ */
 function buildRobot3D(color, tileSize) {
     const group = new THREE.Group();
     const r = tileSize * ghostSettings.radiusRatio;
@@ -917,6 +1037,10 @@ function buildRobot3D(color, tileSize) {
     return group;
 }
 
+/**
+ * Constrói o sprite 2D de um robô visto de cima: torso, ombros, capacete,
+ * viseira ciana e emissor de peito. Roda -90° em X para ficar no chão.
+ */
 function buildRobot2D(color, tileSize) {
     const group = new THREE.Group();
     const r = tileSize * ghostSettings.radiusRatio;
@@ -981,6 +1105,17 @@ function buildRobot2D(color, tileSize) {
     return group;
 }
 
+// ─────────────────────────────────────────────────────────────
+// PACMAN (JOGADOR VISUAL)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Cria os modelos visual 3D e 2D do Pacman.
+ * Ambos usam morph targets para animar a boca (aberta ↔ fechada):
+ *   - pacman3D: esfera amarela com boca recortada (SphereGeometry com ângulo de abertura)
+ *   - pacman2D: círculo plano com boca recortada (CircleGeometry), rodado para vista de topo
+ * Devolve { pacman3D, pacman2D } — o main.js mostra só um de cada vez.
+ */
 export function createPacmanModels({ tileSize }) {
     const group3d = new THREE.Group();
     const radius = tileSize * 0.24;
@@ -1028,6 +1163,16 @@ export function createPacmanModels({ tileSize }) {
     return { pacman3D: group3d, pacman2D: group2d };
 }
 
+// ─────────────────────────────────────────────────────────────
+// MOVIMENTO DO JOGADOR
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Move a câmara de perspetiva (vista em primeira pessoa) com base nos controlos.
+ * Calcula vetores de frente/direita a partir do yaw (rotação horizontal),
+ * normaliza o vetor de movimento e testa colisões em X e Z separadamente
+ * (deslizamento ao longo das paredes).
+ */
 function updatePerspectiveCamera(deltaSeconds, controls, camera, mazeLayout) {
     const forwardVector = new THREE.Vector3(-Math.sin(controls.yaw), 0, -Math.cos(controls.yaw));
     const rightVector = new THREE.Vector3(Math.cos(controls.yaw), 0, -Math.sin(controls.yaw));
@@ -1069,6 +1214,11 @@ function updatePerspectiveCamera(deltaSeconds, controls, camera, mazeLayout) {
     camera.rotation.x = controls.pitch;
 }
 
+/**
+ * Move a câmara ortogonal (vista de topo) com base nos controlos.
+ * As direções são fixas (não dependem da orientação da câmara),
+ * e a colisão funciona da mesma forma que na perspetiva.
+ */
 function updateOrthographicMovement(deltaSeconds, controls, camera, mazeLayout) {
     const movementVector = new THREE.Vector3();
 
@@ -1106,6 +1256,20 @@ function updateOrthographicMovement(deltaSeconds, controls, camera, mazeLayout) 
     camera.position.y = playerSettings.playerEyeHeight;
 }
 
+// ─────────────────────────────────────────────────────────────
+// FUNÇÕES EXPORTADAS — usadas pelo main.js e pelo menu.js
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Inicializa o jogador: coloca a câmara na célula de spawn e orienta-a
+ * para o início do corredor. Devolve os controlos e a célula de spawn.
+ *
+ * @param {object}     params
+ * @param {THREE.Camera} params.camera    - A câmara de perspetiva.
+ * @param {number[][]}   params.mazeLayout - A grelha 2D do labirinto.
+ * @param {number}       params.tileSize   - Tamanho de uma célula.
+ * @returns {{ controls, spawnCell }}
+ */
 export function createPlayer({ camera, mazeLayout, tileSize }) {
     const controls = createControls();
     const spawnCell = findSpawnCell(mazeLayout);
@@ -1130,6 +1294,15 @@ export function createPlayer({ camera, mazeLayout, tileSize }) {
     return { controls, spawnCell };
 }
 
+/**
+ * Cria os quatro inimigos do mapa e adiciona-os à cena.
+ * O tipo de inimigo (ghost/dog/robot) determina qual função de construção usar.
+ * Cada inimigo começa numa das quatro células em volta do centro com direção diferente.
+ *
+ * @param {object} params
+ * @param {string} params.enemyType - 'ghost', 'dog' ou 'robot'.
+ * @returns {THREE.Group[]} Array com os quatro inimigos.
+ */
 export function createGhosts({ scene, mazeLayout, centerMarkerCell, tileSize, wallHeight, enemyType = 'ghost' }) {
     const centerRow = Math.floor(mazeLayout.length / 2);
     const centerColumn = Math.floor(mazeLayout[0].length / 2);
@@ -1201,6 +1374,14 @@ export function createGhosts({ scene, mazeLayout, centerMarkerCell, tileSize, wa
     return enemies;
 }
 
+/**
+ * Cria os sprites 2D planos (vista de topo) para os inimigos já existentes.
+ * A lista devolve um sprite por inimigo, na mesma ordem.
+ *
+ * @param {THREE.Group[]} params.ghosts    - Os inimigos 3D já criados.
+ * @param {string}        params.enemyType - 'ghost', 'dog' ou 'robot'.
+ * @returns {THREE.Group[]}
+ */
 export function createGhosts2D({ ghosts, tileSize, enemyType = 'ghost' }) {
     return ghosts.map((ghost) => {
         const color = ghost.userData.color ?? ghostColors.blue;
@@ -1218,6 +1399,11 @@ export function createGhosts2D({ ghosts, tileSize, enemyType = 'ghost' }) {
     });
 }
 
+/**
+ * Atualiza todos os inimigos num fotograma: move, orienta a face e anima as pernas.
+ * modeResolver e targetResolver permitem ao main.js definir modo/alvo por inimigo
+ * (ex: inimigo comido vai para 'return', os outros continuam em 'chase').
+ */
 export function updateGhosts({
     deltaSeconds,
     ghosts,
@@ -1238,6 +1424,11 @@ export function updateGhosts({
     }
 }
 
+/**
+ * Anima as pernas/braços de cães e robôs com oscilação sinusoidal.
+ * A velocidade de oscilação é proporcional à velocidade de movimento.
+ * Quando parado, a amplitude decai suavemente até zero.
+ */
 function updateEnemyLegs(ghost, deltaSeconds) {
     const { legGroups } = ghost.userData;
     if (!legGroups || legGroups.length === 0) {
@@ -1265,6 +1456,12 @@ function updateEnemyLegs(ghost, deltaSeconds) {
     }
 }
 
+/**
+ * Roda gradualmente a face do inimigo para a direção de movimento.
+ * A rotação é suavizada (máximo faceTurnSpeed radianos/segundo) para
+ * evitar viragens instantâneas que pareceriam bruscas.
+ * Robôs e cães rodam o corpo inteiro; fantasmas rodam só o faceGroup.
+ */
 function updateGhostFaceOrientation(ghost, deltaSeconds) {
     if (!ghost) {
         return;
@@ -1296,6 +1493,9 @@ function updateGhostFaceOrientation(ghost, deltaSeconds) {
     faceGroup.rotation.y = nextYaw;
 }
 
+/**
+ * Altera a cor do material do corpo do inimigo.
+ */
 function setGhostMaterialColor(ghost, hexColor) {
     const material = ghost.userData.bodyMaterial;
     if (material && material.color) {
@@ -1303,6 +1503,10 @@ function setGhostMaterialColor(ghost, hexColor) {
     }
 }
 
+/**
+ * Mostra ou esconde o corpo do inimigo (os olhos ficam sempre visíveis,
+ * para o efeito "apenas olhos" quando o inimigo está a regressar ao centro).
+ */
 function setGhostPartsVisibility(ghost, showBody) {
     const bodyParts = ghost.userData.bodyParts ?? [];
     const eyeParts = ghost.userData.eyeParts ?? [];
@@ -1316,6 +1520,10 @@ function setGhostPartsVisibility(ghost, showBody) {
     }
 }
 
+/**
+ * Altera a opacidade do material do corpo. Com opacity < 1 o material
+ * passa a transparent=true para o Three.js saber que precisa de ordenação.
+ */
 function setGhostBodyOpacity(ghost, opacity) {
     const {bodyMaterial} = ghost.userData;
     if (!bodyMaterial) {
@@ -1326,6 +1534,15 @@ function setGhostBodyOpacity(ghost, opacity) {
     bodyMaterial.opacity = opacity;
 }
 
+/**
+ * Define o estado visual e de velocidade de um inimigo 3D.
+ *   'normal' → cor original, velocidade normal
+ *   'scared' → cor azul escuro, velocidade normal (durante modo poder)
+ *   'eyes'   → corpo invisível, velocidade 3×, apenas olhos visíveis (a regressar)
+ *
+ * @param {THREE.Group} ghost - O modelo 3D do inimigo.
+ * @param {string}      state - 'normal', 'scared' ou 'eyes'.
+ */
 export function setGhostState(ghost, state) {
     if (!ghost) {
         return;
@@ -1353,6 +1570,14 @@ export function setGhostState(ghost, state) {
     ghost.userData.state = state;
 }
 
+/**
+ * Define o estado visual do sprite 2D de um inimigo (equivalente a setGhostState).
+ * Tem a mesma lógica mas atua sobre os materiais MeshBasicMaterial do sprite plano.
+ *
+ * @param {THREE.Group} ghost2d   - O sprite 2D do inimigo.
+ * @param {string}      state     - 'normal', 'scared' ou 'eyes'.
+ * @param {number}      baseColor - Cor hexadecimal original (opcional).
+ */
 export function setGhost2DState(ghost2d, state, baseColor) {
     if (!ghost2d) {
         return;
@@ -1404,6 +1629,11 @@ export function setGhost2DState(ghost2d, state, baseColor) {
     ghost2d.userData.baseColor = resolvedBaseColor;
 }
 
+/**
+ * Verifica se um inimigo está exatamente na célula central do labirinto.
+ * Usado para detetar quando um inimigo (no estado 'eyes') chegou ao centro
+ * e pode ser reposto ao estado normal.
+ */
 export function isGhostInsideCenterBox(ghost, centerMarkerCell, tileSize) {
     if (!ghost || !centerMarkerCell) {
         return false;
@@ -1413,10 +1643,34 @@ export function isGhostInsideCenterBox(ghost, centerMarkerCell, tileSize) {
     return row === centerMarkerCell.row && column === centerMarkerCell.column;
 }
 
+/**
+ * Verifica se o jogador está a tocar em algum inimigo (colisão círculo-círculo).
+ * Usado em cada fotograma para detetar fim de jogo ou comer um inimigo assustado.
+ */
 export function playerIsTouchingGhosts({ playerX, playerZ, playerRadius, ghosts }) {
     return collidesWithGhosts(ghosts, playerX, playerZ, playerRadius);
 }
 
+// ─────────────────────────────────────────────────────────────
+// MOEDAS
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Cria todas as moedas do mapa e adiciona-as à cena.
+ *
+ * Para cada célula caminhável (que não esteja excluída ou na zona central)
+ * cria uma moeda normal esférica amarela. Depois seleciona aleatoriamente
+ * powerCoinCount moedas para se tornarem "moedas de poder" — mais grandes,
+ * com geometria octaédrica e cores alternadas (brilhante/dourado).
+ *
+ * Cada moeda guarda em userData:
+ *   collected    → true quando apanhada (para não ser testada novamente)
+ *   baseHeight   → altura Y de repouso (usada na animação de flutuação)
+ *   floatOffset  → fase aleatória da onda de flutuação (para variação)
+ *   isPower      → true se for uma moeda de poder
+ *
+ * @returns {{ coinGroup: THREE.Group, coins: THREE.Mesh[] }}
+ */
 export function createCoins({
     scene,
     mazeLayout,
@@ -1530,6 +1784,17 @@ export function createCoins({
     return { coinGroup, coins };
 }
 
+/**
+ * Anima todas as moedas por recolher num fotograma.
+ *   - Moedas normais: sobem e descem suavemente (onda sinusoidal)
+ *   - Moedas de poder em perspetiva: rodam no eixo Y
+ *   - Moedas de poder em ortogonal: trocam para geometria plana e ficam estáticas
+ * A troca de geometria/material só acontece quando a vista muda — não em cada frame.
+ *
+ * @param {number}      params.elapsedSeconds - Tempo total desde o início do jogo.
+ * @param {THREE.Mesh[]} params.coins         - Todas as moedas.
+ * @param {string}       params.view          - 'perspective' ou 'orthographic'.
+ */
 export function updateCoins({ elapsedSeconds, coins, view = 'perspective' }) {
     for (const coin of coins) {
         if (coin.userData.collected) {
@@ -1569,6 +1834,14 @@ export function updateCoins({ elapsedSeconds, coins, view = 'perspective' }) {
     }
 }
 
+/**
+ * Verifica quais as moedas que o jogador apanhou neste fotograma.
+ * Marca-as como recolhidas (collected=true) e esconde-as.
+ * Devolve o número de moedas normais e de poder apanhadas separadamente
+ * (o main.js usa isso para atualizar a pontuação e ativar o modo poder).
+ *
+ * @returns {{ collectedCount: number, powerCollected: number }}
+ */
 export function collectCoins({ playerX, playerZ, playerRadius, coins }) {
     let collectedCount = 0;
     let powerCollected = 0;
@@ -1596,6 +1869,11 @@ export function collectCoins({ playerX, playerZ, playerRadius, coins }) {
     return { collectedCount, powerCollected };
 }
 
+/**
+ * Atualiza a posição do jogador por fotograma.
+ * Delega para updatePerspectiveCamera ou updateOrthographicMovement
+ * dependendo da vista ativa nos controlos.
+ */
 export function updatePlayer({ deltaSeconds, controls, camera, mazeLayout }) {
     if (controls.view === 'orthographic') {
         updateOrthographicMovement(deltaSeconds, controls, camera, mazeLayout);

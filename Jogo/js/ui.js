@@ -1,278 +1,252 @@
 // ui.js
-// Responsible for all on-screen interface elements during gameplay.
+// Responsável por todos os elementos da interface durante o jogo.
 //
-// This module manages:
-//   - The score pill ("Pontos: 120") shown in the top corner
-//   - The power-mode countdown timer (appears when a power coin is eaten)
-//   - The pause menu (Escape key opens it; has Resume, Controls, Exit)
-//   - The game-over screen (shown on win or loss, with final score and rank)
+// Este módulo gere:
+//   - A etiqueta de pontuação ("Pontos: 120") mostrada no canto
+//   - O temporizador de contagem decrescente do modo poder
+//     (aparece quando uma moeda de poder é apanhada)
+//   - O menu de pausa (tecla Escape abre; tem Continuar, Controlos, Sair)
+//   - O ecrã de fim de jogo (mostrado em vitória ou derrota, com pontuação e posição)
 //
-// None of these functions touch the 3D scene — they only read and write
-// the HTML/CSS of existing DOM elements.
+// Nenhuma destas funções toca na cena 3D — apenas lêem e escrevem
+// o HTML/CSS dos elementos DOM existentes.
 
-import { saveScore } from './scores.js';
+import { guardarPontuacao } from './scores.js';
 
 // ─────────────────────────────────────────────────────────────
-// SCORE DISPLAY
+// PONTUAÇÃO
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Creates the score pill element and appends it to the page body.
- * The pill shows the current point total at all times during gameplay.
+ * Cria a etiqueta de pontuação e adiciona-a à página.
+ * A etiqueta mostra o total de pontos em qualquer momento durante o jogo.
  *
- * @returns {HTMLElement} The score pill element.
+ * @returns {HTMLElement} O elemento da etiqueta de pontuação.
  */
-export function createScoreElement() {
-    const scoreElement = document.createElement('div');
-    scoreElement.className = 'score-pill';
-    scoreElement.textContent = 'Pontos: 0';
-    document.body.appendChild(scoreElement);
-    return scoreElement;
+export function criarElementoPontuacao() {
+    const elementoPontuacao = document.createElement('div');
+    elementoPontuacao.className = 'score-pill';
+    elementoPontuacao.textContent = 'Pontos: 0';
+    document.body.appendChild(elementoPontuacao);
+    return elementoPontuacao;
 }
 
 /**
- * Updates the text inside the score pill.
+ * Atualiza o texto dentro da etiqueta de pontuação.
  *
- * @param {HTMLElement} scoreElement - The score pill element.
- * @param {number}      value        - The new point total to display.
+ * @param {HTMLElement} elementoPontuacao - O elemento da etiqueta.
+ * @param {number}      valor             - O novo total de pontos a mostrar.
  */
-export function updateScoreDisplay(scoreElement, value) {
-    if (!scoreElement) return;
-    scoreElement.textContent = `Pontos: ${value}`;
+export function atualizarPontuacao(elementoPontuacao, valor) {
+    if (!elementoPontuacao) return;
+    elementoPontuacao.textContent = `Pontos: ${valor}`;
 }
 
 // ─────────────────────────────────────────────────────────────
-// POWER TIMER
-// Appears when the player eats a power coin. Shows a countdown
-// in seconds. Disappears when power mode ends.
+// TEMPORIZADOR DO MODO PODER
+// Aparece quando o jogador apanha uma moeda de poder. Mostra
+// uma contagem decrescente em segundos. Desaparece quando o
+// modo poder termina.
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Creates the power-timer element and appends it to the page body.
- * It starts hidden and is shown by showPowerTimer().
+ * Cria o elemento do temporizador e adiciona-o à página.
+ * Começa escondido; é mostrado por mostrarTemporizador().
  *
- * @returns {HTMLElement} The power-timer container element.
+ * @returns {HTMLElement} O elemento contentor do temporizador.
  */
-export function createPowerTimerElement() {
-    const timerElement = document.createElement('div');
-    timerElement.className = 'power-timer is-hidden';
-    timerElement.innerHTML = `
+export function criarElementoTemporizador() {
+    const elementoTemporizador = document.createElement('div');
+    elementoTemporizador.className = 'power-timer is-hidden';
+    elementoTemporizador.innerHTML = `
         <span class="power-timer__clock" aria-hidden="true"></span>
         <span class="power-timer__value">10</span>
     `;
-    document.body.appendChild(timerElement);
-    return timerElement;
+    document.body.appendChild(elementoTemporizador);
+    return elementoTemporizador;
 }
 
 /**
- * Makes the power timer visible and sets its displayed number of seconds.
+ * Torna o temporizador visível e define o número inicial de segundos.
  *
- * @param {HTMLElement} timerElement  - The power-timer element.
- * @param {number}      totalSeconds  - How many seconds to display initially.
+ * @param {HTMLElement} elementoTemporizador - O elemento do temporizador.
+ * @param {number}      segundosTotais       - Quantos segundos mostrar inicialmente.
  */
-export function showPowerTimer(timerElement, totalSeconds) {
-    if (!timerElement) return;
-    timerElement.classList.remove('is-hidden');
-    const valueSpan = timerElement.querySelector('.power-timer__value');
-    if (valueSpan) valueSpan.textContent = String(Math.ceil(totalSeconds));
+export function mostrarTemporizador(elementoTemporizador, segundosTotais) {
+    if (!elementoTemporizador) return;
+    elementoTemporizador.classList.remove('is-hidden');
+    const spanValor = elementoTemporizador.querySelector('.power-timer__value');
+    if (spanValor) spanValor.textContent = String(Math.ceil(segundosTotais));
 }
 
 /**
- * Hides the power timer.
+ * Esconde o temporizador.
  *
- * @param {HTMLElement} timerElement - The power-timer element.
+ * @param {HTMLElement} elementoTemporizador - O elemento do temporizador.
  */
-export function hidePowerTimer(timerElement) {
-    if (!timerElement) return;
-    timerElement.classList.add('is-hidden');
-}
-
-/**
- * Updates the countdown number inside the timer every game frame.
- * Returns true if power mode is still running, false if it has expired.
- *
- * @param {HTMLElement} timerElement   - The power-timer element.
- * @param {number}      remainingMs    - Milliseconds left in power mode.
- * @returns {boolean}  Whether power mode is still active after this tick.
- */
-export function tickPowerTimerDisplay(timerElement, remainingMs) {
-    if (!timerElement) return false;
-
-    const remainingSeconds = Math.ceil(Math.max(0, remainingMs) / 1000);
-    const valueSpan = timerElement.querySelector('.power-timer__value');
-    if (valueSpan) valueSpan.textContent = String(remainingSeconds);
-
-    if (remainingMs <= 0) {
-        hidePowerTimer(timerElement);
-        return false; // power mode has ended
-    }
-
-    return true; // power mode still running
+export function esconderTemporizador(elementoTemporizador) {
+    if (!elementoTemporizador) return;
+    elementoTemporizador.classList.add('is-hidden');
 }
 
 // ─────────────────────────────────────────────────────────────
-// PAUSE MENU
-// The pause menu is a DOM overlay that slides in on Escape.
-// It has multiple sub-views: 'pause-main' and 'pause-controls'.
+// MENU DE PAUSA
+// O menu de pausa é uma sobreposição DOM que aparece ao premir Escape.
+// Tem múltiplos sub-painéis: 'pause-main' e 'pause-controls'.
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Reads all pause-menu DOM elements from the page.
- * Returns null for any element that doesn't exist (graceful degradation).
+ * Lê todos os elementos DOM do menu de pausa da página.
+ * Devolve null para qualquer elemento que não exista.
  *
- * @returns {object} Bundle of pause-menu DOM references.
+ * @returns {object} Conjunto de referências DOM do menu de pausa.
  */
-export function getPauseMenuElements() {
+export function obterElementosMenuPausa() {
+    const raizPausa = document.getElementById('pause-root');
     return {
-        pauseRoot:            document.getElementById('pause-root'),
-        pauseBackButton:      document.getElementById('pause-back'),
-        pauseContinueButton:  document.getElementById('pause-continue'),
-        pauseControlsButton:  document.getElementById('pause-controls'),
-        pauseExitButton:      document.getElementById('pause-exit'),
-        pausePanels: (() => {
-            const root = document.getElementById('pause-root');
-            return root ? Array.from(root.querySelectorAll('[data-view]')) : [];
-        })()
+        raizPausa,
+        botaoVoltar:      document.getElementById('pause-back'),
+        botaoContinuar:   document.getElementById('pause-continue'),
+        botaoControlos:   document.getElementById('pause-controls'),
+        botaoSair:        document.getElementById('pause-exit'),
+        paineis: raizPausa ? Array.from(raizPausa.querySelectorAll('[data-view]')) : []
     };
 }
 
 /**
- * Shows one sub-panel of the pause menu and hides all others.
- * Also shows/hides the back button depending on which panel is active.
+ * Mostra um sub-painel do menu de pausa e esconde todos os outros.
+ * Também mostra/esconde o botão de voltar conforme o painel ativo.
  *
- * @param {string}      viewName    - 'pause-main' or 'pause-controls'
- * @param {HTMLElement} pauseRoot   - The pause menu root element.
- * @param {HTMLElement[]} pausePanels - All [data-view] panels inside pauseRoot.
- * @param {HTMLElement} pauseBackButton - The back button inside the pause menu.
+ * @param {string}      nomeVista   - 'pause-main' ou 'pause-controls'
+ * @param {HTMLElement} raizPausa   - O elemento raiz do menu de pausa.
+ * @param {HTMLElement[]} paineis   - Todos os painéis [data-view] dentro do raizPausa.
+ * @param {HTMLElement} botaoVoltar - O botão de voltar dentro do menu de pausa.
  */
-export function showPauseSubView(viewName, pauseRoot, pausePanels, pauseBackButton) {
-    if (!pauseRoot) return;
+export function mostrarSubPainelPausa(nomeVista, raizPausa, paineis, botaoVoltar) {
+    if (!raizPausa) return;
 
-    for (const panel of pausePanels) {
-        const isTarget = panel.getAttribute('data-view') === viewName;
-        panel.classList.toggle('is-hidden', !isTarget);
+    for (const painel of paineis) {
+        const eDestino = painel.getAttribute('data-view') === nomeVista;
+        painel.classList.toggle('is-hidden', !eDestino);
     }
 
-    // The back button is only needed when NOT on the main pause panel
-    if (pauseBackButton) {
-        const showBack = viewName !== 'pause-main';
-        pauseBackButton.classList.toggle('is-hidden', !showBack);
+    // O botão de voltar só é necessário quando NÃO estamos no painel principal
+    if (botaoVoltar) {
+        botaoVoltar.classList.toggle('is-hidden', nomeVista === 'pause-main');
     }
 }
 
 /**
- * Opens the pause menu overlay and freezes player movement.
- * Does nothing if the game is not currently in 'playing' state.
+ * Abre o menu de pausa e congela o movimento do jogador.
+ * Não faz nada se o jogo não estiver no estado 'a-jogar'.
  *
- * @param {object}      gameState   - Mutable state object with a .status string and .pauseStartedAt.
- * @param {object}      controls    - Player movement controls (all set to false to stop movement).
- * @param {HTMLElement} pauseRoot   - The pause root element.
- * @param {HTMLElement[]} pausePanels
- * @param {HTMLElement} pauseBackButton
+ * @param {object}      estadoJogo  - Objeto de estado mutável com .estado e .pausadoEm.
+ * @param {object}      controlos   - Controlos do jogador (definidos a false para parar o movimento).
+ * @param {HTMLElement} raizPausa   - O elemento raiz da pausa.
+ * @param {HTMLElement[]} paineis
+ * @param {HTMLElement} botaoVoltar
  */
-export function openPauseMenu(gameState, controls, pauseRoot, pausePanels, pauseBackButton) {
-    if (!pauseRoot || gameState.status !== 'playing') return;
+export function abrirMenuPausa(estadoJogo, controlos, raizPausa, paineis, botaoVoltar) {
+    if (!raizPausa || estadoJogo.estado !== 'a-jogar') return;
 
-    gameState.status = 'paused';
-    gameState.pauseStartedAt = performance.now();
-    pauseRoot.classList.remove('is-hidden');
-    showPauseSubView('pause-main', pauseRoot, pausePanels, pauseBackButton);
+    estadoJogo.estado    = 'pausado';
+    estadoJogo.pausadoEm = performance.now();
+    raizPausa.classList.remove('is-hidden');
+    mostrarSubPainelPausa('pause-main', raizPausa, paineis, botaoVoltar);
 
-    // Stop all movement so the player doesn't slide after pausing
-    controls.forward  = false;
-    controls.backward = false;
-    controls.left     = false;
-    controls.right    = false;
-    controls.dragging = false;
+    // Parar todo o movimento para o jogador não deslizar depois de pausar
+    controlos.forward  = false;
+    controlos.backward = false;
+    controlos.left     = false;
+    controlos.right    = false;
+    controlos.dragging = false;
 }
 
 /**
- * Closes the pause menu and resumes gameplay.
- * If power mode was active when paused, the power timer is extended
- * by the duration of the pause so the player doesn't lose time unfairly.
+ * Fecha o menu de pausa e retoma o jogo.
+ * Se o modo poder estava ativo quando se pausou, o temporizador é estendido
+ * pelo tempo da pausa, para o jogador não perder tempo injustamente.
  *
- * @param {object}      gameState    - Mutable state object with .status, .pauseStartedAt.
- * @param {object}      powerState   - Mutable object with .active and .expiresAt.
- * @param {HTMLElement} pauseRoot    - The pause root element.
+ * @param {object}      estadoJogo  - Objeto de estado mutável com .estado e .pausadoEm.
+ * @param {object}      estadoPoder - Objeto mutável com .ativo e .expiraEm.
+ * @param {HTMLElement} raizPausa   - O elemento raiz da pausa.
  */
-export function closePauseMenu(gameState, powerState, pauseRoot) {
-    if (!pauseRoot || gameState.status !== 'paused') return;
+export function fecharMenuPausa(estadoJogo, estadoPoder, raizPausa) {
+    if (!raizPausa || estadoJogo.estado !== 'pausado') return;
 
-    const now = performance.now();
+    const agora = performance.now();
 
-    // Extend power mode deadline by however long the game was paused
-    if (powerState.active && gameState.pauseStartedAt > 0) {
-        powerState.expiresAt += now - gameState.pauseStartedAt;
+    // Estender o prazo do modo poder pelo tempo que o jogo esteve pausado
+    if (estadoPoder.ativo && estadoJogo.pausadoEm > 0) {
+        estadoPoder.expiraEm += agora - estadoJogo.pausadoEm;
     }
 
-    gameState.pauseStartedAt = 0;
-    gameState.status = 'playing';
-    pauseRoot.classList.add('is-hidden');
+    estadoJogo.pausadoEm = 0;
+    estadoJogo.estado    = 'a-jogar';
+    raizPausa.classList.add('is-hidden');
 }
 
 // ─────────────────────────────────────────────────────────────
-// GAME OVER SCREEN
+// ECRÃ DE FIM DE JOGO
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Reads all gameover-screen DOM elements from the page.
+ * Lê todos os elementos DOM do ecrã de fim de jogo da página.
  *
- * @returns {object} Bundle of gameover DOM references.
+ * @returns {object} Conjunto de referências DOM do fim de jogo.
  */
-export function getGameoverElements() {
+export function obterElementosFimJogo() {
     return {
-        gameoverRoot:      document.getElementById('gameover-root'),
-        gameoverTitle:     document.getElementById('gameover-title'),
-        gameoverScore:     document.getElementById('gameover-score'),
-        gameoverNewButton: document.getElementById('gameover-new'),
-        gameoverExitButton: document.getElementById('gameover-exit')
+        raizFimJogo:      document.getElementById('gameover-root'),
+        tituloFimJogo:    document.getElementById('gameover-title'),
+        pontuacaoFimJogo: document.getElementById('gameover-score'),
+        botaoNovoJogo:    document.getElementById('gameover-new'),
+        botaoSairFimJogo: document.getElementById('gameover-exit')
     };
 }
 
 /**
- * Ends the current game: saves the score, then shows the game-over screen
- * with the appropriate title, final score, and leaderboard rank.
+ * Termina o jogo: guarda a pontuação e mostra o ecrã de fim de jogo
+ * com o título adequado, pontuação final e posição no top.
  *
- * @param {'win'|'lose'}  result          - Whether the player won or lost.
- * @param {number}        totalScore      - The player's final score.
- * @param {object}        mapConfig       - The map that was played (needs .id and .name).
- * @param {object}        gameState       - Mutable state — .status is set to 'finished'.
- * @param {object}        powerState      - Mutable state — .active is set to false.
- * @param {HTMLElement}   powerTimerEl    - The power timer element (hidden on game end).
- * @param {HTMLElement}   pauseRoot       - The pause menu (hidden on game end).
- * @param {object}        gameoverEls     - DOM bundle from getGameoverElements().
+ * @param {'vitoria'|'derrota'} resultado      - Se o jogador ganhou ou perdeu.
+ * @param {number}        pontuacaoTotal       - Pontuação final do jogador.
+ * @param {object}        configuracaoMapa     - O mapa jogado (precisa de .id e .name).
+ * @param {object}        estadoJogo           - Estado mutável — .estado é definido como 'terminado'.
+ * @param {object}        estadoPoder          - Estado mutável — .ativo é definido como false.
+ * @param {HTMLElement}   elementoTemporizador - Temporizador (escondido ao terminar).
+ * @param {HTMLElement}   raizPausa            - Menu de pausa (escondido ao terminar).
+ * @param {object}        elementosFimJogo     - Conjunto DOM de obterElementosFimJogo().
  */
-export function endGame(result, totalScore, mapConfig, gameState, powerState, powerTimerEl, pauseRoot, gameoverEls) {
-    // Mark game as finished so the animate loop stops updating gameplay
-    gameState.status  = 'finished';
-    powerState.active = false;
+export function terminarJogo(resultado, pontuacaoTotal, configuracaoMapa, estadoJogo, estadoPoder, elementoTemporizador, raizPausa, elementosFimJogo) {
+    // Marcar o jogo como terminado para parar o ciclo de atualização
+    estadoJogo.estado = 'terminado';
+    estadoPoder.ativo = false;
 
-    // Hide any overlays that might still be visible
-    hidePowerTimer(powerTimerEl);
-    pauseRoot?.classList.add('is-hidden');
+    // Esconder sobreposições que possam estar visíveis
+    esconderTemporizador(elementoTemporizador);
+    raizPausa?.classList.add('is-hidden');
 
-    // Save the score to localStorage and get the player's rank (1-10, or null)
-    const rank = saveScore({
-        score:   totalScore,
-        mapId:   mapConfig.id,
-        mapName: mapConfig.name,
-        result
+    // Guardar a pontuação no localStorage e obter a posição no top (1-10, ou null)
+    const classificacao = guardarPontuacao({
+        pontuacao: pontuacaoTotal,
+        idMapa:    configuracaoMapa.id,
+        nomeMapa:  configuracaoMapa.name,
+        resultado: resultado === 'vitoria' ? 'win' : 'lose'
     });
 
-    const { gameoverRoot, gameoverTitle, gameoverScore } = gameoverEls;
-    if (!gameoverRoot) return;
+    const { raizFimJogo, tituloFimJogo, pontuacaoFimJogo } = elementosFimJogo;
+    if (!raizFimJogo) return;
 
-    // Show win or loss message
-    const isWin = result === 'win';
-    if (gameoverTitle) {
-        gameoverTitle.textContent = isWin ? 'Parabens!! Vitoria' : 'Game Over';
+    const eVitoria = resultado === 'vitoria';
+    if (tituloFimJogo) {
+        tituloFimJogo.textContent = eVitoria ? 'Parabens!! Vitoria' : 'Game Over';
     }
 
-    // Show the score and optionally the leaderboard rank
-    if (gameoverScore) {
-        const rankText = rank !== null ? `  •  #${rank} no Top 10` : '';
-        gameoverScore.textContent = `Pontos: ${totalScore}${rankText}`;
+    if (pontuacaoFimJogo) {
+        const textoClassificacao = classificacao !== null ? `  •  #${classificacao} no Top 10` : '';
+        pontuacaoFimJogo.textContent = `Pontos: ${pontuacaoTotal}${textoClassificacao}`;
     }
 
-    gameoverRoot.classList.remove('is-hidden');
+    raizFimJogo.classList.remove('is-hidden');
 }

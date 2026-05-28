@@ -1,5 +1,23 @@
+// maze.js
+// Responsável por criar o layout do labirinto e construir a sua geometria 3D.
+//
+// Contém duas partes principais:
+//
+//   LAYOUT — createSymmetricMazeLayout cria a grelha 2D do labirinto a partir de
+//             um blueprint textual (23×33 caracteres). Cada '#' é uma parede (1),
+//             cada '.' é corredor (0). As letras P (porta), C (centro) e S (spawn)
+//             marcam células especiais e são convertidas em 0 (corredor).
+//
+//   GEOMETRIA — createMaze constrói toda a geometria Three.js: chão, teto, paredes
+//               (um Box por célula de parede), painel de porta decorativo e linha-guia
+//               de bordo. Devolve os objetos para o resto do jogo usar.
+//
+//   NAVEGAÇÃO — isWalkableAt, findSpawnCell, getMazeData são utilitários que os
+//               módulos de personagens e câmaras usam para se mover no labirinto.
+
 import * as THREE from 'three';
 
+// As quatro direções ortogonais usadas para navegação na grelha (cima, baixo, esquerda, direita)
 const cardinalDirections = [
     { row: -1, column: 0 },
     { row: 1, column: 0 },
@@ -7,26 +25,45 @@ const cardinalDirections = [
     { row: 0, column: 1 }
 ];
 
-let centerMarkerCell = null;
-let frontMarkerCell = null;
-let spawnMarkerCell = null;
+// Células marcadas com letras especiais no blueprint — preenchidas durante o parsing
+let centerMarkerCell = null;  // célula 'C': centro do labirinto (ponto de reunião dos inimigos)
+let frontMarkerCell  = null;  // célula 'P': frente do centro (onde aparece o painel de porta)
+let spawnMarkerCell  = null;  // célula 'S': posição inicial do jogador
 
+// ─────────────────────────────────────────────────────────────
+// CRIAÇÃO DO LAYOUT (GRELHA 2D)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Cria uma grelha 2D totalmente preenchida com um valor fixo.
+ * Usada como ponto de partida para algoritmos que "abrem" corredores.
+ */
 function createFilledGrid(rows, columns, fillValue) {
     return Array.from({ length: rows }, () => Array.from({ length: columns }, () => fillValue));
 }
 
+/**
+ * Abre um corredor horizontal na grelha (define células como 0 entre startColumn e endColumn).
+ */
 function carveHorizontal(layout, row, startColumn, endColumn) {
     for (let column = startColumn; column <= endColumn; column += 1) {
         layout[row][column] = 0;
     }
 }
 
+/**
+ * Abre um corredor vertical na grelha (define células como 0 entre startRow e endRow).
+ */
 function carveVertical(layout, column, startRow, endRow) {
     for (let row = startRow; row <= endRow; row += 1) {
         layout[row][column] = 0;
     }
 }
 
+/**
+ * Gera um layout de labirinto alternativo por algoritmo (anéis + corredores + bloqueadores).
+ * Usado como fallback se as dimensões não corresponderem ao blueprint principal.
+ */
 function createPacmanDarkDeceptionLayout(rows, columns) {
     const layout = createFilledGrid(rows, columns, 1);
     const ringOffsets = [1, 4, 7, 10];
@@ -71,6 +108,13 @@ function createPacmanDarkDeceptionLayout(rows, columns) {
     return layout;
 }
 
+/**
+ * Cria o layout do labirinto a partir do blueprint textual de 23×33 caracteres.
+ * Cada caracter do blueprint é convertido:
+ *   '#' → 1 (parede)     '.' → 0 (corredor)
+ *   'C' → 0 + centerMarkerCell    'P' → 0 + frontMarkerCell    'S' → 0 + spawnMarkerCell
+ * Se as dimensões pedidas não baterem com o blueprint, usa o layout algorítmico.
+ */
 function createSymmetricMazeLayout(rows, columns) {
     const blueprint = [
         '#################################',
@@ -129,6 +173,15 @@ function createSymmetricMazeLayout(rows, columns) {
     }));
 }
 
+// ─────────────────────────────────────────────────────────────
+// TEXTURAS DA PORTA
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Desenha a base de uma porta de duas folhas num canvas 2D.
+ * Cada folha tem dois painéis com brilho e sombra, e um puxador dourado.
+ * Reutilizado por createDoorFaceTexture e createBarricadedDoorFaceTexture.
+ */
 function drawDoorBase(ctx, size) {
     ctx.fillStyle = '#2a0e04';
     ctx.fillRect(0, 0, size, size);
@@ -228,6 +281,10 @@ function drawDoorBase(ctx, size) {
     drawKnob(rightX + Math.round(rightW * 0.15));
 }
 
+/**
+ * Cria a textura de porta normal (sem barricadas) num canvas de tamanho dado.
+ * Usada no painel decorativo em frente da sala central.
+ */
 function createDoorFaceTexture(size = 512) {
     const canvas = document.createElement('canvas');
     canvas.width = size;
@@ -240,6 +297,10 @@ function createDoorFaceTexture(size = 512) {
     return new THREE.CanvasTexture(canvas);
 }
 
+/**
+ * Cria a textura de porta barricadada: porta base com três tábuas pregadas por cima.
+ * (Esta textura está disponível mas não é usada no layout padrão.)
+ */
 function createBarricadedDoorFaceTexture(size = 512) {
     const canvas = document.createElement('canvas');
     canvas.width = size;
@@ -317,22 +378,48 @@ function createBarricadedDoorFaceTexture(size = 512) {
     return new THREE.CanvasTexture(canvas);
 }
 
+// ─────────────────────────────────────────────────────────────
+// UTILITÁRIOS EXPORTADOS
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Devolve a célula central do labirinto (marcada com 'C' no blueprint).
+ * É o ponto de reunião dos inimigos após spawnar.
+ */
 export function getCenterMarkerCell() {
     return centerMarkerCell;
 }
 
+/**
+ * Devolve a célula da frente (marcada com 'P' no blueprint).
+ * É onde o painel decorativo de porta é colocado.
+ */
 export function getFrontMarkerCell() {
     return frontMarkerCell;
 }
 
+/**
+ * Gera o layout do labirinto para usar no fundo animado do menu principal.
+ * Usa o mesmo blueprint do jogo para garantir consistência visual.
+ */
 export function createMenuMazeLayout(rows, columns) {
     return createSymmetricMazeLayout(rows, columns);
 }
 
+/**
+ * Verifica se uma coordenada (row, column) está dentro dos limites da grelha.
+ */
 function isInsideGrid(layout, row, column) {
     return row >= 0 && row < layout.length && column >= 0 && column < layout[0].length;
 }
 
+/**
+ * Encontra a melhor célula de spawn para o jogador.
+ * Prioridade: célula 'S' do blueprint → linha perto do fundo → primeira célula livre.
+ *
+ * @param {number[][]} layout - A grelha 2D do labirinto.
+ * @returns {{ row: number, column: number }}
+ */
 export function findSpawnCell(layout) {
     if (spawnMarkerCell && layout[spawnMarkerCell.row]?.[spawnMarkerCell.column] === 0) {
         return spawnMarkerCell;
@@ -355,6 +442,17 @@ export function findSpawnCell(layout) {
     return { row: 1, column: 1 };
 }
 
+/**
+ * Verifica se uma posição no mundo é caminhável dado um raio de colisão.
+ * Testa os quatro cantos da caixa delimitadora (radius × radius) — se algum
+ * canto cair numa parede, a posição não é caminhável.
+ *
+ * @param {number[][]} mazeLayout - A grelha 2D.
+ * @param {number}     worldX     - Coordenada X no mundo.
+ * @param {number}     worldZ     - Coordenada Z no mundo.
+ * @param {number}     radius     - Metade da largura da caixa de colisão.
+ * @returns {boolean}
+ */
 export function isWalkableAt(mazeLayout, worldX, worldZ, radius) {
     const sampleOffsets = [
         { x: -radius, z: -radius },
@@ -377,6 +475,14 @@ export function isWalkableAt(mazeLayout, worldX, worldZ, radius) {
     return true;
 }
 
+/**
+ * Calcula as dimensões e o centro do labirinto em coordenadas do mundo.
+ * Usado pelas câmaras e pelas luzes para se posicionarem corretamente.
+ *
+ * @param {number[][]} mazeLayout - A grelha 2D.
+ * @param {number}     tileSize   - Tamanho de uma célula em unidades do mundo.
+ * @returns {{ mazeWidth, mazeHeight, mazeCenterX, mazeCenterZ }}
+ */
 export function getMazeData(mazeLayout, tileSize) {
     const mazeWidth = mazeLayout[0].length;
     const mazeHeight = mazeLayout.length;
@@ -391,6 +497,30 @@ export function getMazeData(mazeLayout, tileSize) {
     };
 }
 
+// ─────────────────────────────────────────────────────────────
+// CONSTRUÇÃO DA GEOMETRIA 3D
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Constrói toda a geometria 3D do labirinto na cena Three.js.
+ *
+ * Para cada célula '1' do layout cria um cubo (parede). Também cria:
+ *   - Um PlaneGeometry como chão
+ *   - Um PlaneGeometry como teto (com BackSide para ser visível de baixo)
+ *   - Uma linha-guia de bordo (apenas para debug/alinhamento)
+ *   - Um painel de porta decorativo sobre a célula 'P'
+ *
+ * Devolve todos os objetos para o jogo poder ajustar materiais, visibilidade, etc.
+ *
+ * @param {object} params
+ * @param {THREE.Scene} params.scene      - A cena onde adicionar os objetos.
+ * @param {number}      params.tileSize   - Tamanho de cada célula (normalmente 1).
+ * @param {number}      params.wallHeight - Altura das paredes.
+ * @param {number}      params.mazeRows    - Número de linhas da grelha.
+ * @param {number}      params.mazeColumns - Número de colunas da grelha.
+ * @param {object}      params.materials  - Materiais opcionais para substituir os padrão.
+ * @returns {{ mazeLayout, mazeGroup, floor, ceiling, borderGuide }}
+ */
 export function createMaze({
     scene,
     tileSize,

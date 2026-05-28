@@ -1,3 +1,16 @@
+// menu.js
+// Responsável pelo menu principal do jogo: navegação entre painéis,
+// seleção de mapa, tabela de pontuações e fundo animado 3D.
+//
+// Estrutura do menu (painéis data-view):
+//   'main'       → ecrã inicial com botões Jogar / Pontuações / Controlos
+//   'map-select' → carrossel de cartões de mapa para escolher onde jogar
+//   'scores'     → tabela com as melhores 10 pontuações guardadas
+//   'controls'   → lista de teclas de controlo
+//
+// O fundo animado usa dois canvas WebGL sobrepostos (A e B) que fazem
+// cross-fade entre três ângulos de câmara pré-definidos do labirinto do hotel.
+
 import * as THREE from 'three';
 import { startGame } from './main.js';
 import {
@@ -7,9 +20,13 @@ import {
 	updateGhosts
 } from './characters.js';
 import { createMaze, getCenterMarkerCell, getMazeData } from './maze.js';
-import { bindLightNumberKeys, registerLight } from './lights.js';
+import { associarTeclasNumericasLuzes, registarLuz } from './lights.js';
 import { MAP_CONFIGS, drawMapThumbnail, createHotelWallTexture, createHotelFloorTexture } from './maps.js';
-import { loadScores } from './scores.js';
+import { carregarPontuacoes } from './scores.js';
+
+// ─────────────────────────────────────────────────────────────
+// REFERÊNCIAS DOM
+// ─────────────────────────────────────────────────────────────
 
 const menuRoot = document.getElementById('menu-root');
 const backButton = document.getElementById('menu-back');
@@ -21,8 +38,19 @@ const scoreEmpty = document.getElementById('score-empty');
 const mazeCanvasA = document.getElementById('menu-maze-canvas-a');
 const mazeCanvasB = document.getElementById('menu-maze-canvas-b');
 
+// Todos os painéis do menu têm um atributo data-view que identifica qual é qual
 const menuPanels = Array.from(document.querySelectorAll('[data-view]'));
 
+// ─────────────────────────────────────────────────────────────
+// NAVEGAÇÃO ENTRE PAINÉIS
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Mostra o painel com o nome dado e esconde todos os outros.
+ * O botão de voltar só aparece quando não estamos no painel 'main'.
+ *
+ * @param {string} viewName - Nome do painel a mostrar (ex: 'main', 'scores', 'controls').
+ */
 function showView(viewName) {
 	for (const panel of menuPanels) {
 		const isTarget = panel.getAttribute('data-view') === viewName;
@@ -33,6 +61,15 @@ function showView(viewName) {
 	backButton?.classList.toggle('is-hidden', !showBack);
 }
 
+// ─────────────────────────────────────────────────────────────
+// TABELA DE PONTUAÇÕES
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Lê as pontuações guardadas e preenche a lista DOM com elas.
+ * Chamada cada vez que o utilizador abre o painel de pontuações
+ * para garantir que os dados estão sempre atualizados.
+ */
 function hydrateScoreList() {
 	if (!scoreList || !scoreEmpty) {
 		return;
@@ -40,7 +77,7 @@ function hydrateScoreList() {
 
 	scoreList.innerHTML = '';
 
-	const scores = loadScores();
+	const scores = carregarPontuacoes();
 
 	if (scores.length === 0) {
 		scoreEmpty.style.display = 'block';
@@ -68,10 +105,24 @@ function hydrateScoreList() {
 	}
 }
 
+// ─────────────────────────────────────────────────────────────
+// SELEÇÃO DE MAPA
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Abre o painel de seleção de mapa quando o jogador carrega em "Jogar".
+ */
 function startNewGame() {
 	showView('map-select');
 }
 
+/**
+ * Gera os cartões de mapa no carrossel de seleção.
+ * Para cada mapa em MAP_CONFIGS cria um cartão com:
+ *   - miniatura (canvas desenhado por drawMapThumbnail)
+ *   - nome, descrição e etiqueta do tipo de inimigo
+ * Clicar num cartão inicia o jogo nesse mapa e esconde o menu.
+ */
 function initMapSelect() {
 	const carousel = document.querySelector('[data-view="map-select"] .map-carousel');
 	if (!carousel) {
@@ -106,6 +157,11 @@ function initMapSelect() {
 	}
 }
 
+// ─────────────────────────────────────────────────────────────
+// LIGAÇÃO DOS BOTÕES E INICIALIZAÇÃO
+// ─────────────────────────────────────────────────────────────
+
+// Ligar cada botão ao seu comportamento
 startButton?.addEventListener('click', startNewGame);
 scoresButton?.addEventListener('click', () => {
 	hydrateScoreList();
@@ -117,12 +173,27 @@ backButton?.addEventListener('click', () => showView('main'));
 showView('main');
 initMapSelect();
 
+// ─────────────────────────────────────────────────────────────
+// FUNDO ANIMADO DO MENU
+// Dois canvas WebGL em cross-fade mostram ângulos do labirinto do hotel.
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Configura e inicia o fundo animado 3D do menu principal.
+ *
+ * Usa dois renderizadores (canvas A e B) que fazem cross-fade entre
+ * três posições de câmara pré-definidas ('presets'). Cada posição tem
+ * uma animação de panorâmica suave (pan).
+ *
+ * O fundo só renderiza quando o menu está visível — para quando o jogo
+ * começa e retoma quando o jogador volta ao menu.
+ */
 function setupMenuMazeBackground() {
 	if (!mazeCanvasA || !mazeCanvasB) {
 		return;
 	}
 
-	bindLightNumberKeys();
+	associarTeclasNumericasLuzes();
 
 	const canvases = [mazeCanvasA, mazeCanvasB];
 	const renderers = canvases.map((canvas) => new THREE.WebGLRenderer({
@@ -142,9 +213,9 @@ function setupMenuMazeBackground() {
 		renderer.outputColorSpace = THREE.SRGBColorSpace;
 	}
 
-	const ambientLight = registerLight('menuAmbient', new THREE.AmbientLight(0xffffff, 0.9));
+	const ambientLight = registarLuz('menuAmbient', new THREE.AmbientLight(0xffffff, 0.9));
 	scene.add(ambientLight);
-	const keyLight = registerLight('menuDirectional', new THREE.DirectionalLight(0xffffff, 0.9));
+	const keyLight = registarLuz('menuDirectional', new THREE.DirectionalLight(0xffffff, 0.9));
 	keyLight.position.set(6, 10, 4);
 	scene.add(keyLight);
 
@@ -231,17 +302,19 @@ function setupMenuMazeBackground() {
 		}
 	];
 
+	// Estado da transição entre presets de câmara
 	let currentIndex = 0;
 	let nextIndex = 1;
 	let transitionStart = performance.now();
 	let transitioning = false;
-	const transitionDuration = 1200;
-	const holdDuration = 5000;
+	const transitionDuration = 1200;  // duração do cross-fade em milissegundos
+	const holdDuration = 5000;        // tempo que cada ângulo é mantido antes de trocar
 	const baseOpacity = 0.7;
 	let lastSwitchTime = performance.now();
 	let activeSlot = 0;
 	let nextSlot = 1;
 
+	// Ajusta resolução dos canvas e rácio de aspeto das câmaras à janela atual
 	const resize = () => {
 		const width = mazeCanvasA.clientWidth || window.innerWidth;
 		const height = mazeCanvasA.clientHeight || window.innerHeight;
@@ -256,6 +329,8 @@ function setupMenuMazeBackground() {
 		}
 	};
 
+	// Calcula a posição e alvo atual de uma câmara para um dado preset + tempo
+	// O sin cria a panorâmica suave ao longo do panAxis
 	const getPresetState = (preset, time) => {
 		const pan = Math.sin(time * 0.00025 + preset.phase) * preset.panAmplitude;
 		const position = preset.position.clone().add(preset.panAxis.clone().multiplyScalar(pan));
@@ -265,6 +340,7 @@ function setupMenuMazeBackground() {
 
 	const clock = new THREE.Clock();
 
+	// Ciclo de renderização: cross-fade entre canvas A e B, atualiza fantasmas e moedas
 	const render = (time) => {
 		if (!menuRoot || menuRoot.classList.contains('is-hidden')) {
 			requestAnimationFrame(render);

@@ -1,7 +1,19 @@
-let lightsEnabled = true;
-let numberKeysBound = false;
+// lights.js
+// Gere todas as luzes da cena num registo central.
+//
+// Cada luz é identificada por uma chave de texto (ex: 'gameAmbient').
+// As teclas 1–5 do teclado alternam as luzes correspondentes.
+//
+// Usar intensity=0 em vez de visible=false é intencional: mudar visible
+// força o Three.js a recompilar todos os shaders (NUM_DIR_LIGHTS muda),
+// o que causa uma pausa visível. Com intensity=0 a luz desaparece
+// sem qualquer recompilação.
 
-const fixedOrder = [
+let luzesAtivas = true;
+let teclasNumericasRegistadas = false;
+
+// Ordem fixa das luzes para mapeamento nas teclas 1–5
+const ordemFixa = [
     'gameAmbient',
     'gameDirectional',
     'gamePointLights',
@@ -9,109 +21,145 @@ const fixedOrder = [
     'menuDirectional'
 ];
 
-const lightRegistry = new Map();
-const lightStates = new Map();
-const originalIntensities = new Map();
+const registoLuzes          = new Map();  // chave → objeto de luz Three.js
+const estadosLuzes          = new Map();  // chave → true/false (ligada/desligada individualmente)
+const intensidadesOriginais = new Map();  // chave → intensidade original (restaurada ao ligar)
 
-function applyLightStateByKey(key) {
-    const light = lightRegistry.get(key);
-    if (!light) {
-        return;
-    }
-    const isEnabled = lightsEnabled && lightStates.get(key) !== false;
+// Aplica o estado atual (luzesAtivas AND estado individual) a uma luz
+function aplicarEstadoLuzPorChave(chave) {
+    const luz = registoLuzes.get(chave);
+    if (!luz) return;
 
-    // Use intensity=0 instead of visible=false to avoid GLSL shader recompilation.
-    // Setting visible=false changes NUM_DIR_LIGHTS / NUM_POINT_LIGHTS defines and
-    // forces Three.js to recompile all shaders, causing a noticeable freeze.
-    if (typeof light.intensity === 'number') {
-        light.intensity = isEnabled ? (originalIntensities.get(key) ?? 1) : 0;
+    const estaAtiva = luzesAtivas && estadosLuzes.get(chave) !== false;
+
+    // intensity=0 em vez de visible=false para evitar recompilação de shaders
+    if (typeof luz.intensity === 'number') {
+        luz.intensity = estaAtiva ? (intensidadesOriginais.get(chave) ?? 1) : 0;
     } else {
-        // Groups (e.g. gamePointLights) don't have intensity — use visibility.
-        light.visible = isEnabled;
+        // Grupos (ex: gamePointLights) não têm intensity — usar visibilidade
+        luz.visible = estaAtiva;
     }
 }
 
-export function registerLight(key, light) {
-    if (!key || !light) {
-        return light;
-    }
+/**
+ * Regista uma luz no sistema central e aplica o seu estado inicial.
+ * Deve ser chamado imediatamente após criar a luz.
+ *
+ * @param {string}      chave - Identificador único da luz (ex: 'gameAmbient').
+ * @param {THREE.Light} luz   - O objeto de luz Three.js a registar.
+ * @returns {THREE.Light} A mesma luz passada (para encadeamento: registarLuz(...) → cena.add(...)).
+ */
+export function registarLuz(chave, luz) {
+    if (!chave || !luz) return luz;
 
-    lightRegistry.set(key, light);
-    if (typeof light.intensity === 'number') {
-        originalIntensities.set(key, light.intensity);
+    registoLuzes.set(chave, luz);
+    if (typeof luz.intensity === 'number') {
+        intensidadesOriginais.set(chave, luz.intensity);
     }
-    if (!lightStates.has(key)) {
-        lightStates.set(key, true);
+    if (!estadosLuzes.has(chave)) {
+        estadosLuzes.set(chave, true);
     }
-    applyLightStateByKey(key);
-    return light;
+    aplicarEstadoLuzPorChave(chave);
+    return luz;
 }
 
-export function setLightEnabledByKey(key, enabled) {
-    if (!key || !lightRegistry.has(key)) {
-        return false;
-    }
-    lightStates.set(key, Boolean(enabled));
-    applyLightStateByKey(key);
+/**
+ * Liga ou desliga uma luz específica pelo seu identificador.
+ *
+ * @param {string}  chave   - Identificador da luz.
+ * @param {boolean} ativada - true para ligar, false para desligar.
+ * @returns {boolean} true se a operação foi bem-sucedida.
+ */
+export function definirLuzAtivaPorChave(chave, ativada) {
+    if (!chave || !registoLuzes.has(chave)) return false;
+    estadosLuzes.set(chave, Boolean(ativada));
+    aplicarEstadoLuzPorChave(chave);
     return true;
 }
 
-export function toggleLightByKey(key) {
-    if (!key || !lightRegistry.has(key)) {
-        return false;
-    }
-    const nextEnabled = !(lightStates.get(key) !== false);
-    lightStates.set(key, nextEnabled);
-    applyLightStateByKey(key);
+/**
+ * Alterna o estado de uma luz (ligada ↔ desligada).
+ *
+ * @param {string} chave - Identificador da luz.
+ * @returns {boolean} true se a operação foi bem-sucedida.
+ */
+export function alternarLuzPorChave(chave) {
+    if (!chave || !registoLuzes.has(chave)) return false;
+    const proximoEstado = !(estadosLuzes.get(chave) !== false);
+    estadosLuzes.set(chave, proximoEstado);
+    aplicarEstadoLuzPorChave(chave);
     return true;
 }
 
-export function setLightsEnabled(enabled) {
-    lightsEnabled = Boolean(enabled);
-    for (const key of lightRegistry.keys()) {
-        applyLightStateByKey(key);
+/**
+ * Liga ou desliga TODAS as luzes registadas de uma só vez.
+ *
+ * @param {boolean} ativadas - true para ligar todas, false para desligar todas.
+ */
+export function definirLuzesAtivas(ativadas) {
+    luzesAtivas = Boolean(ativadas);
+    for (const chave of registoLuzes.keys()) {
+        aplicarEstadoLuzPorChave(chave);
     }
 }
 
-export function toggleLights() {
-    setLightsEnabled(!lightsEnabled);
-    return lightsEnabled;
+/**
+ * Inverte o estado global de todas as luzes.
+ *
+ * @returns {boolean} O novo estado global (true = ligadas).
+ */
+export function alternarLuzes() {
+    definirLuzesAtivas(!luzesAtivas);
+    return luzesAtivas;
 }
 
-export function getLightsEnabled() {
-    return lightsEnabled;
+/**
+ * Devolve true se as luzes estão globalmente ativas.
+ *
+ * @returns {boolean}
+ */
+export function obterLuzesAtivas() {
+    return luzesAtivas;
 }
 
-export function getLightCount() {
-    return lightRegistry.size;
+/**
+ * Devolve o número de luzes atualmente registadas.
+ *
+ * @returns {number}
+ */
+export function obterContagemLuzes() {
+    return registoLuzes.size;
 }
 
-export function getLightBindings() {
-    return fixedOrder.map((key, index) => ({
-        key,
-        number: index + 1,
-        registered: lightRegistry.has(key)
+/**
+ * Devolve a lista de mapeamentos luz ↔ tecla numérica para mostrar na UI de controlos.
+ *
+ * @returns {Array<{key: string, number: number, registered: boolean}>}
+ */
+export function obterMapeamentoLuzes() {
+    return ordemFixa.map((chave, indice) => ({
+        key:        chave,
+        number:     indice + 1,
+        registered: registoLuzes.has(chave)
     }));
 }
 
-export function bindLightNumberKeys(target = window) {
-    if (numberKeysBound || !target?.addEventListener) {
-        return;
-    }
+/**
+ * Associa as teclas numéricas 1–N ao sistema de luzes (uma vez apenas).
+ * Premir a tecla 1 alterna a primeira luz da ordemFixa, etc.
+ *
+ * @param {EventTarget} alvo - O objeto ao qual adicionar o listener (por defeito: window).
+ */
+export function associarTeclasNumericasLuzes(alvo = window) {
+    if (teclasNumericasRegistadas || !alvo?.addEventListener) return;
 
-    numberKeysBound = true;
-    target.addEventListener('keydown', (event) => {
-        if (!event?.key) {
-            return;
-        }
-        if (event.key < '1' || event.key > String(fixedOrder.length)) {
-            return;
-        }
+    teclasNumericasRegistadas = true;
+    alvo.addEventListener('keydown', (evento) => {
+        if (!evento?.key) return;
+        if (evento.key < '1' || evento.key > String(ordemFixa.length)) return;
 
-        const index = Number(event.key) - 1;
-        const key = fixedOrder[index];
-        if (key) {
-            toggleLightByKey(key);
-        }
+        const indice = Number(evento.key) - 1;
+        const chave = ordemFixa[indice];
+        if (chave) alternarLuzPorChave(chave);
     });
 }

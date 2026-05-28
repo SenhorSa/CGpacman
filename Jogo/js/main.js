@@ -1,25 +1,25 @@
 // main.js
-// The game's entry point and central orchestrator.
+// Ponto de entrada e orquestrador central do jogo.
 //
-// This file's only job is to wire all the pieces together:
-// it imports functionality from the other modules, calls them in the
-// correct order, and connects their outputs to each other.
-// No complex logic lives here — each concern has its own module:
+// O único papel deste ficheiro é ligar todas as peças entre si:
+// importa funcionalidades dos outros módulos, chama-as pela ordem
+// correta e liga os seus resultados uns aos outros.
+// Nenhuma lógica complexa vive aqui — cada responsabilidade tem o seu módulo:
 //
-//   walllamp.js  → wall lamp creation and placement
-//   scene.js     → scene, renderer, cameras, view switching
-//   ui.js        → score display, pause menu, game-over screen
-//   gameplay.js  → ghost mode, power mode, coin flip, collisions
-//   minimap.js   → minimap rendering
-//   characters.js → player, ghosts, pacman models, coins (DO NOT EDIT)
-//   maze.js       → maze layout and geometry  (DO NOT EDIT)
-//   maps.js       → map configurations        (DO NOT EDIT)
-//   lights.js     → light registry            (DO NOT EDIT)
-//   scores.js     → score persistence         (DO NOT EDIT)
+//   walllamp.js   → criação e colocação de candeeiros de parede
+//   scene.js      → cena, renderizador, câmaras, troca de vistas
+//   ui.js         → pontuação, menu de pausa, ecrã de fim de jogo
+//   gameplay.js   → modo fantasmas, modo poder, moeda, colisões
+//   minimap.js    → renderização do minimapa
+//   characters.js → jogador, fantasmas, pacman, moedas  (NÃO EDITAR)
+//   maze.js       → disposição e geometria do labirinto (NÃO EDITAR)
+//   maps.js       → configurações dos mapas             (NÃO EDITAR)
+//   lights.js     → registo de luzes                    (NÃO EDITAR)
+//   scores.js     → persistência de pontuações          (NÃO EDITAR)
 
 import * as THREE from 'three';
 import { createMaze, getCenterMarkerCell, getMazeData } from './maze.js';
-import { bindLightNumberKeys, registerLight } from './lights.js';
+import { associarTeclasNumericasLuzes, registarLuz } from './lights.js';
 import {
     MAP_CONFIGS,
     createHedgeWallTexture, createGrassFloorTexture,
@@ -33,52 +33,53 @@ import {
     setGhost2DState, setGhostState,
     updateCoins, updateGhosts, updatePlayer
 } from './characters.js';
-import { placeWallLamps }                                         from './walllamp.js';
-import { createSceneAndRenderer, setupSunLight, createGameCameras, activatePerspectiveView, activateOrthographicView, handleWindowResize } from './scene.js';
-import { createScoreElement, updateScoreDisplay, createPowerTimerElement, getPauseMenuElements, showPauseSubView, openPauseMenu, closePauseMenu, getGameoverElements, endGame } from './ui.js';
-import { createCoinFlipWidget, createGhostModeState, triggerCoinFlipCycle, createPowerModeState, activatePowerMode, tickPowerMode, getCollidingGhostIndex, stepTowardAngle } from './gameplay.js';
-import { createMinimapRenderer, renderMinimap }                   from './minimap.js';
+import { colocarCandeeirosParede }                         from './walllamp.js';
+import { criarCenaERenderizador, configurarLuzSolar, criarCamerasDeJogo, ativarVistaPerspetiva, ativarVistaTopDown, tratarRedimensionamento } from './scene.js';
+import { criarElementoPontuacao, atualizarPontuacao, criarElementoTemporizador, obterElementosMenuPausa, mostrarSubPainelPausa, abrirMenuPausa, fecharMenuPausa, obterElementosFimJogo, terminarJogo } from './ui.js';
+import { criarWidgetMoeda, criarEstadoModoFantasma, iniciarCicloMoeda, criarEstadoPoder, ativarPoder, atualizarPoder, obterIndiceColisaoFantasma, avancarParaAngulo } from './gameplay.js';
+import { criarRenderizadorMinimapa, renderizarMinimapa }   from './minimap.js';
 
 // ─────────────────────────────────────────────────────────────
-// MAZE DIMENSIONS
-// Every map uses the same 23×33 grid. The tile size of 1 means
-// one tile = one world unit (meter), which makes all positioning simple.
+// DIMENSÕES DO LABIRINTO
+// Todos os mapas usam a mesma grelha de 23×33. O tamanho de célula 1
+// significa que uma célula = uma unidade do mundo, o que simplifica
+// todos os cálculos de posicionamento.
 // ─────────────────────────────────────────────────────────────
-const MAZE_ROWS    = 23;
-const MAZE_COLUMNS = 33;
-const TILE_SIZE    = 1;   // one tile = one world unit
-const WALL_HEIGHT  = 1;   // walls are 1 unit tall
+const LINHAS_LABIRINTO   = 23;
+const COLUNAS_LABIRINTO  = 33;
+const TAMANHO_CELULA     = 1;  // uma célula = uma unidade do mundo
+const ALTURA_PAREDE      = 1;  // as paredes têm 1 unidade de altura
 
 // ─────────────────────────────────────────────────────────────
-// COIN FLIP SETTINGS
-// The coin flip controls how often and how smoothly ghost mode switches.
+// CONFIGURAÇÃO DA MOEDA
+// Controla a frequência e suavidade das trocas de modo dos fantasmas.
 // ─────────────────────────────────────────────────────────────
-const COIN_FLIP_SETTINGS = {
-    intervalMs:    30000,  // how often the coin flips (every 30 seconds)
-    revealDelayMs:   500,  // pause before the coin starts spinning (milliseconds)
-    flipDurationMs: 1500,  // how long the spin animation takes
-    resultHoldMs:   1500,  // how long the result is shown before the coin disappears
-    weightStep:      0.1,  // how much the probability shifts after a repeated result
-    minWeight:      0.01,  // chase probability floor (ghosts can always chase occasionally)
-    maxWeight:      0.99   // chase probability ceiling
+const CONFIGURACOES_MOEDA = {
+    intervalMs:    30000,  // frequência dos lançamentos (a cada 30 segundos)
+    revealDelayMs:   500,  // pausa antes da moeda começar a rodar (milissegundos)
+    flipDurationMs: 1500,  // duração da animação de rotação
+    resultHoldMs:   1500,  // tempo que o resultado é mostrado antes de desaparecer
+    weightStep:      0.1,  // quanto a probabilidade muda após resultado repetido
+    minWeight:      0.01,  // probabilidade mínima de perseguir
+    maxWeight:      0.99   // probabilidade máxima de perseguir
 };
 
 // ─────────────────────────────────────────────────────────────
-// POWER MODE SETTINGS
-// Eating a glowing power coin activates power mode.
+// CONFIGURAÇÃO DO MODO PODER
+// Apanhar uma moeda de poder brilhante ativa o modo poder.
 // ─────────────────────────────────────────────────────────────
-const POWER_MODE_SETTINGS = {
-    durationMs:      10000,  // power mode lasts 10 seconds
-    baseGhostPoints:    20   // eating the first ghost gives 20 pts; each next gives double
+const CONFIGURACOES_PODER = {
+    durationMs:      10000,  // o modo poder dura 10 segundos
+    baseGhostPoints:    20   // o primeiro fantasma comido dá 20 pts; cada seguinte dá o dobro
 };
 
 // ─────────────────────────────────────────────────────────────
-// WALL LAMP PLACEMENTS
-// Each entry places a lamp on a specific wall tile facing a specific direction.
-// These positions were chosen manually to light the maze corridors evenly.
-// { row, column } is a walkable tile; 'wall' is which neighbour wall it mounts on.
+// POSIÇÕES DOS CANDEEIROS
+// Cada entrada coloca um candeeiro numa parede específica do labirinto.
+// As posições foram escolhidas manualmente para iluminar os corredores.
+// { row, column } é uma célula caminhável; 'wall' é a parede vizinha.
 // ─────────────────────────────────────────────────────────────
-const WALL_LAMP_PLACEMENTS = [
+const POSICOES_CANDEEIROS = [
     { row: 1,  column: 3,  wall: 'south' }, { row: 1,  column: 9,  wall: 'north' },
     { row: 1,  column: 20, wall: 'north' }, { row: 1,  column: 26, wall: 'north' },
     { row: 1,  column: 30, wall: 'north' }, { row: 2,  column: 11, wall: 'east'  },
@@ -112,527 +113,522 @@ const WALL_LAMP_PLACEMENTS = [
 ];
 
 // ─────────────────────────────────────────────────────────────
-// TEXTURE HELPERS
-// Returns the correct wall/floor texture for the selected map.
-// Each map config has a textureType field that determines which
-// canvas-drawn texture to use.
+// AUXILIARES DE TEXTURA
+// Devolvem a textura de parede/chão correta para o mapa selecionado.
 // ─────────────────────────────────────────────────────────────
 
-function getWallTextureForMap(config) {
-    if (config.wallTextureType === 'hedge')    return createHedgeWallTexture();
-    if (config.wallTextureType === 'concrete') return createConcreteWallTexture(256);
+function obterTexturaParede(configuracaoMapa) {
+    if (configuracaoMapa.wallTextureType === 'hedge')    return createHedgeWallTexture();
+    if (configuracaoMapa.wallTextureType === 'concrete') return createConcreteWallTexture(256);
     return createHotelWallTexture(256);
 }
 
-function getFloorTextureForMap(config) {
-    if (config.floorTextureType === 'grass') return createGrassFloorTexture(512);
-    if (config.floorTextureType === 'metal') return createMetalFloorTexture(512);
+function obterTexturaChao(configuracaoMapa) {
+    if (configuracaoMapa.floorTextureType === 'grass') return createGrassFloorTexture(512);
+    if (configuracaoMapa.floorTextureType === 'metal') return createMetalFloorTexture(512);
     return createHotelFloorTexture(512);
 }
 
 // ─────────────────────────────────────────────────────────────
-// ENTRY POINT
+// PONTO DE ENTRADA
 // ─────────────────────────────────────────────────────────────
 
-// Prevents startGame from being called more than once
-// (clicking a map card twice would otherwise create two games on top of each other)
-let gameStarted = false;
+// Impede que iniciarJogo seja chamado mais de uma vez
+// (clicar duas vezes num mapa criaria dois jogos sobrepostos)
+let jogoIniciado = false;
 
 /**
- * Starts a new game on the selected map.
- * Called by the menu when the player clicks a map card.
+ * Inicia um novo jogo no mapa selecionado.
+ * Chamada pelo menu quando o jogador clica num cartão de mapa.
  *
- * @param {object} mapConfig - One of the configurations from MAP_CONFIGS in maps.js.
+ * @param {object} configuracaoMapa - Uma das configurações de MAP_CONFIGS em maps.js.
  */
-export function startGame(mapConfig = MAP_CONFIGS.hotel) {
-    if (gameStarted) return;
-    gameStarted = true;
+export function startGame(configuracaoMapa = MAP_CONFIGS.hotel) {
+    if (jogoIniciado) return;
+    jogoIniciado = true;
 
-    const appElement = document.getElementById('app');
-    if (!appElement) return;
+    const elementoApp = document.getElementById('app');
+    if (!elementoApp) return;
 
-    // ── STEP 1: Create the 3D scene, renderer, and scene lights ──────────────
-    // The scene is the container for all 3D objects.
-    // The renderer draws the scene to the browser canvas.
+    // ── PASSO 1: Criar a cena 3D, o renderizador e as luzes da cena ──────────
+    // A cena é o contentor de todos os objetos 3D.
+    // O renderizador desenha a cena no canvas do navegador.
 
-    const { scene, renderer, sceneFog, mainLight } = createSceneAndRenderer(appElement, mapConfig);
-    bindLightNumberKeys();  // enables number keys 1–9 to toggle individual lights
+    const { cena, renderizador, nevoeiroJogo, luzPrincipal } = criarCenaERenderizador(elementoApp, configuracaoMapa);
+    associarTeclasNumericasLuzes();  // as teclas numéricas 1–9 passam a controlar as luzes individuais
 
-    // ── STEP 2: Build the maze geometry and get layout data ──────────────────
-    // mazeLayout is a 2D array: 0 = walkable floor, 1 = solid wall.
-    // mazeGroup, floor, ceiling are Three.js objects added to the scene.
+    // ── PASSO 2: Criar os materiais do labirinto ──────────────────────────────
+    // Materiais de perspetiva: alta qualidade, afetados pela iluminação
+    const texturaParede = obterTexturaParede(configuracaoMapa);
+    const texturaChao   = obterTexturaChao(configuracaoMapa);
 
-    const wallTexture   = getWallTextureForMap(mapConfig);
-    const floorTexture  = getFloorTextureForMap(mapConfig);
-
-    // Perspective materials: high-quality, affected by lighting
-    const wallMaterialPerspective  = new THREE.MeshStandardMaterial({
-        color: 0xffffff, roughness: mapConfig.wallRoughness, metalness: 0.0,
-        map: wallTexture ?? null
+    const materialParedePersp = new THREE.MeshStandardMaterial({
+        color: 0xffffff, roughness: configuracaoMapa.wallRoughness, metalness: 0.0,
+        map: texturaParede ?? null
     });
-    const floorMaterialPerspective = new THREE.MeshStandardMaterial({
-        color: 0xffffff, roughness: mapConfig.floorRoughness, metalness: 0.0,
-        map: floorTexture ?? null
+    const materialChaoPersp = new THREE.MeshStandardMaterial({
+        color: 0xffffff, roughness: configuracaoMapa.floorRoughness, metalness: 0.0,
+        map: texturaChao ?? null
     });
-    const ceilingMaterial = new THREE.MeshStandardMaterial({
-        color: mapConfig.ceilingColor ?? 0xede0c8,
+    const materialTeto = new THREE.MeshStandardMaterial({
+        color: configuracaoMapa.ceilingColor ?? 0xede0c8,
         roughness: 0.9, metalness: 0.0, side: THREE.DoubleSide
     });
 
-    // Orthographic materials: simple flat colors, no lighting calculation needed
-    const wallMaterialOrthographic  = new THREE.MeshBasicMaterial({
-        map: wallTexture ?? null, color: 0xffffff, toneMapped: false,
+    // Materiais de topo: cores planas simples, sem cálculo de iluminação
+    const materialParedeTop = new THREE.MeshBasicMaterial({
+        map: texturaParede ?? null, color: 0xffffff, toneMapped: false,
         polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2
     });
-    const floorMaterialOrthographic = new THREE.MeshBasicMaterial({
-        map: floorTexture ?? null, color: 0xffffff, toneMapped: false
+    const materialChaoTop = new THREE.MeshBasicMaterial({
+        map: texturaChao ?? null, color: 0xffffff, toneMapped: false
     });
-    const borderGuideMaterial = new THREE.LineBasicMaterial({ color: 0xe5e7eb });
+    const materialLinhaGuia = new THREE.LineBasicMaterial({ color: 0xe5e7eb });
 
-    // The point light group holds all the wall lamp lights so they can be
-    // toggled together as one registered light group
-    const pointLightGroup = registerLight('gamePointLights', new THREE.Group());
-    scene.add(pointLightGroup);
+    // O grupo de luzes pontuais contém todas as luzes dos candeeiros de parede
+    // para que possam ser controladas em conjunto como um grupo registado
+    const grupoPontosLuz = registarLuz('gamePointLights', new THREE.Group());
+    cena.add(grupoPontosLuz);
 
-    const { mazeLayout, mazeGroup, floor, ceiling } = createMaze({
-        scene, tileSize: TILE_SIZE, wallHeight: WALL_HEIGHT,
-        mazeRows: MAZE_ROWS, mazeColumns: MAZE_COLUMNS,
-        materials: { wallMaterialPerspective, floorMaterialPerspective, ceilingMaterial, borderGuideMaterial }
+    // ── PASSO 3: Construir a geometria do labirinto ───────────────────────────
+    // layoutLabirinto é uma grelha 2D: 0 = caminhável, 1 = parede sólida.
+
+    const { mazeLayout: layoutLabirinto, mazeGroup: grupoLabirinto, floor: chao, ceiling: teto } = createMaze({
+        scene: cena, tileSize: TAMANHO_CELULA, wallHeight: ALTURA_PAREDE,
+        mazeRows: LINHAS_LABIRINTO, mazeColumns: COLUNAS_LABIRINTO,
+        materials: { wallMaterialPerspective: materialParedePersp, floorMaterialPerspective: materialChaoPersp, ceilingMaterial: materialTeto, borderGuideMaterial: materialLinhaGuia }
     });
 
-    const { mazeWidth, mazeHeight, mazeCenterX, mazeCenterZ } = getMazeData(mazeLayout, TILE_SIZE);
-    const centerMarkerCell = getCenterMarkerCell();  // center tile used as ghost home base
+    const { mazeWidth: larguraLabirinto, mazeHeight: alturaLabirinto, mazeCenterX: centroCenaX, mazeCenterZ: centroCenaZ } = getMazeData(layoutLabirinto, TAMANHO_CELULA);
+    const celulaCentro = getCenterMarkerCell();  // célula central usada como base dos fantasmas
 
-    // ── STEP 3: Position the sun and add its visual ───────────────────────────
+    // ── PASSO 4: Posicionar o sol ─────────────────────────────────────────────
+    configurarLuzSolar(cena, luzPrincipal, celulaCentro, centroCenaX, centroCenaZ, larguraLabirinto, alturaLabirinto, TAMANHO_CELULA);
 
-    setupSunLight(scene, mainLight, centerMarkerCell, mazeCenterX, mazeCenterZ, mazeWidth, mazeHeight, TILE_SIZE);
-
-    // ── STEP 4: Place wall lamps ──────────────────────────────────────────────
-    // Only place lamps if this map uses point lights (intensity > 0)
-
-    if (mapConfig.pointLightIntensity > 0) {
-        placeWallLamps({
-            mazeLayout, tileSize: TILE_SIZE, wallHeight: WALL_HEIGHT,
-            targetGroup: pointLightGroup,
-            lightColor:    mapConfig.pointLightColor,
-            lightIntensity: mapConfig.pointLightIntensity,
-            placements: WALL_LAMP_PLACEMENTS
+    // ── PASSO 5: Colocar candeeiros de parede ─────────────────────────────────
+    // Só colocar se o mapa usar luzes pontuais (intensidade > 0)
+    if (configuracaoMapa.pointLightIntensity > 0) {
+        colocarCandeeirosParede({
+            layoutLabirinto, tamanhoCelula: TAMANHO_CELULA, alturaParede: ALTURA_PAREDE,
+            grupoDestino:   grupoPontosLuz,
+            corLuz:         configuracaoMapa.pointLightColor,
+            intensidadeLuz: configuracaoMapa.pointLightIntensity,
+            posicoes:       POSICOES_CANDEEIROS
         });
     }
 
-    // ── STEP 5: Create cameras ────────────────────────────────────────────────
-
-    const { perspectiveCamera, orthographicCamera } = createGameCameras(
-        mazeWidth, mazeHeight, mazeCenterX, mazeCenterZ
+    // ── PASSO 6: Criar as câmaras ─────────────────────────────────────────────
+    const { cameraPerspetiva, cameraTopDown } = criarCamerasDeJogo(
+        larguraLabirinto, alturaLabirinto, centroCenaX, centroCenaZ
     );
 
-    // ── STEP 6: Create minimap renderer ──────────────────────────────────────
-    // minimapViewSize = how many tiles visible around the player on each side
-
-    const MINIMAP_VIEW_SIZE   = 4;
-    const MINIMAP_CAMERA_HEIGHT = 12;
-    const { minimapRenderer, minimapCamera, minimapRoot } = createMinimapRenderer(
-        MINIMAP_VIEW_SIZE, MINIMAP_CAMERA_HEIGHT
+    // ── PASSO 7: Criar o renderizador do minimapa ─────────────────────────────
+    const TAMANHO_VISTA_MINIMAPA  = 4;   // unidades visíveis à volta do jogador de cada lado
+    const ALTURA_CAMERA_MINIMAPA  = 12;  // altura acima do chão da câmara do minimapa
+    const { renderizadorMinimapa, cameraMinimapa, raizMinimapa } = criarRenderizadorMinimapa(
+        TAMANHO_VISTA_MINIMAPA, ALTURA_CAMERA_MINIMAPA
     );
 
-    // ── STEP 7: Create all characters ────────────────────────────────────────
+    // ── PASSO 8: Criar todos os personagens ──────────────────────────────────
 
-    // Player: sets up movement controls and positions the perspective camera at spawn
-    const { controls, spawnCell } = createPlayer({ camera: perspectiveCamera, mazeLayout, tileSize: TILE_SIZE });
-
-    // Enemies: 3D models for the perspective view
-    const ghosts = createGhosts({
-        scene, mazeLayout, centerMarkerCell,
-        tileSize: TILE_SIZE, wallHeight: WALL_HEIGHT,
-        enemyType: mapConfig.enemyType
+    // Jogador: configura os controlos de movimento e posiciona a câmara de perspetiva
+    const { controls: controlos, spawnCell: celulaNascimento } = createPlayer({
+        camera: cameraPerspetiva, mazeLayout: layoutLabirinto, tileSize: TAMANHO_CELULA
     });
 
-    // Flat 2D enemy sprites for the top-down and minimap views
-    const ghost2DGroup  = new THREE.Group();
-    scene.add(ghost2DGroup);
-    const ghost2DModels = createGhosts2D({ ghosts, tileSize: TILE_SIZE, enemyType: mapConfig.enemyType });
-    for (const ghost2D of ghost2DModels) ghost2DGroup.add(ghost2D);
+    // Inimigos: modelos 3D para a vista em perspetiva
+    const fantasmas = createGhosts({
+        scene: cena, mazeLayout: layoutLabirinto, centerMarkerCell: celulaCentro,
+        tileSize: TAMANHO_CELULA, wallHeight: ALTURA_PAREDE,
+        enemyType: configuracaoMapa.enemyType
+    });
 
-    // Pacman: one 3D model for perspective view, one flat sprite for top-down view
-    const { pacman3D, pacman2D } = createPacmanModels({ tileSize: TILE_SIZE });
-    scene.add(pacman3D, pacman2D);
+    // Sprites 2D planos dos inimigos para as vistas de topo e minimapa
+    const grupoFantasmas2D  = new THREE.Group();
+    cena.add(grupoFantasmas2D);
+    const modelos2DFantasmas = createGhosts2D({ ghosts: fantasmas, tileSize: TAMANHO_CELULA, enemyType: configuracaoMapa.enemyType });
+    for (const fantasma2D of modelos2DFantasmas) grupoFantasmas2D.add(fantasma2D);
 
-    // A simple yellow circle shown only on the minimap (not in either main view)
-    const minimapPacman = new THREE.Mesh(
-        new THREE.CircleGeometry(TILE_SIZE * 0.22, 20),
+    // Pacman: um modelo 3D para a perspetiva, um sprite plano para a vista de topo
+    const { pacman3D, pacman2D } = createPacmanModels({ tileSize: TAMANHO_CELULA });
+    cena.add(pacman3D, pacman2D);
+
+    // Círculo amarelo simples mostrado apenas no minimapa (não nas vistas principais)
+    const pacmanMinimapa = new THREE.Mesh(
+        new THREE.CircleGeometry(TAMANHO_CELULA * 0.22, 20),
         new THREE.MeshBasicMaterial({ color: 0xfacc15 })
     );
-    minimapPacman.rotation.x = -Math.PI / 2;
-    minimapPacman.visible    = false;
-    scene.add(minimapPacman);
+    pacmanMinimapa.rotation.x = -Math.PI / 2;
+    pacmanMinimapa.visible    = false;
+    cena.add(pacmanMinimapa);
 
-    // Small yellow circle on the floor directly under the player (like a spotlight)
-    const playerSpotlight = new THREE.Mesh(
+    // Pequeno círculo amarelo no chão diretamente sob o jogador (como um holofote)
+    const holofoteJogador = new THREE.Mesh(
         new THREE.CircleGeometry(0.18, 24),
         new THREE.MeshBasicMaterial({ color: 0xfacc15 })
     );
-    playerSpotlight.rotation.x = -Math.PI / 2;
-    playerSpotlight.position.y  = 0.06;
-    scene.add(playerSpotlight);
+    holofoteJogador.rotation.x = -Math.PI / 2;
+    holofoteJogador.position.y  = 0.06;
+    cena.add(holofoteJogador);
 
-    // ── STEP 8: Place coins ───────────────────────────────────────────────────
-    // Exclude the player's spawn cell and all ghost starting cells from coin placement
-    // to prevent coins from spawning inside characters
+    // ── PASSO 9: Colocar moedas ───────────────────────────────────────────────
+    // Excluir a célula de nascimento do jogador e todas as células iniciais dos fantasmas
+    // para evitar que moedas apareçam dentro dos personagens
 
-    const ghostStartCells = ghosts.map(ghost => ({
-        row:    Math.round(ghost.position.z / TILE_SIZE),
-        column: Math.round(ghost.position.x / TILE_SIZE)
+    const celulasInicioFantasmas = fantasmas.map(f => ({
+        row:    Math.round(f.position.z / TAMANHO_CELULA),
+        column: Math.round(f.position.x / TAMANHO_CELULA)
     }));
 
-    const { coins } = createCoins({
-        scene, mazeLayout, tileSize: TILE_SIZE,
-        excludedCells:   [spawnCell, ...ghostStartCells],
-        centerMarkerCell,
-        exclusionRadius: 2,    // minimum distance from ghost home for coin placement
-        powerCoinCount:  5     // how many glowing power coins to place
+    const { coins: moedas } = createCoins({
+        scene: cena, mazeLayout: layoutLabirinto, tileSize: TAMANHO_CELULA,
+        excludedCells:   [celulaNascimento, ...celulasInicioFantasmas],
+        centerMarkerCell: celulaCentro,
+        exclusionRadius: 2,   // distância mínima da base dos fantasmas para colocar moedas
+        powerCoinCount:  5    // quantas moedas de poder brilhantes colocar
     });
 
-    // ── STEP 9: Create UI elements ────────────────────────────────────────────
+    // ── PASSO 10: Criar os elementos da interface ─────────────────────────────
+    const elementoPontuacao    = criarElementoPontuacao();
+    const elementoTemporizador = criarElementoTemporizador();
+    const menuPausa            = obterElementosMenuPausa();
+    const elementosFimJogo     = obterElementosFimJogo();
 
-    const scoreElement      = createScoreElement();
-    const powerTimerElement = createPowerTimerElement();
-    const pauseElements     = getPauseMenuElements();
-    const gameoverElements  = getGameoverElements();
+    // ── PASSO 11: Criar o widget da moeda e o estado do modo fantasmas ────────
+    const { contentorMoeda, interiorMoeda } = criarWidgetMoeda();
+    const estadoModoFantasma = criarEstadoModoFantasma(CONFIGURACOES_MOEDA);
 
-    // ── STEP 10: Create the coin flip widget and ghost mode state ─────────────
+    // ── PASSO 12: Criar o estado do modo poder e do jogo ─────────────────────
 
-    const { coinWrapper, coinInner } = createCoinFlipWidget();
-    const ghostModeState = createGhostModeState(COIN_FLIP_SETTINGS);
+    const estadoPoder = criarEstadoPoder();
 
-    // ── STEP 11: Create power mode and game state ─────────────────────────────
+    // estadoJogo.estado pode ser: 'a-jogar', 'pausado', 'terminado'
+    // Controla se o ciclo de animação deve atualizar a mecânica de jogo
+    const estadoJogo  = { estado: 'a-jogar', pausadoEm: 0 };
 
-    const powerState = createPowerModeState();
+    // Rastreia qual câmara e qual vista ('perspetiva' ou 'topo') está ativa.
+    // Este objeto é modificado pelas funções de troca de vista em scene.js.
+    const estadoAtivo = { camera: cameraPerspetiva, vista: 'perspetiva' };
 
-    // gameState.status tracks whether the game loop should update gameplay:
-    //   'playing'  → normal gameplay
-    //   'paused'   → pause menu is open; nothing moves
-    //   'finished' → game over; nothing moves
-    const gameState  = { status: 'playing', pauseStartedAt: 0 };
+    // Totais acumulados ao longo do jogo
+    let pontuacaoTotal    = 0;
+    let moedasApanhadas   = 0;
 
-    // Tracks which camera and which view mode ('perspective' or 'orthographic') is active.
-    // This object is mutated by the view-switching functions in scene.js.
-    const activeState = { camera: perspectiveCamera, view: 'perspective' };
+    // ── PASSO 13: Rastreio da rotação do Pacman ───────────────────────────────
+    // Controla a rotação visual atual dos modelos do Pacman para que
+    // se virem suavemente para a direção de movimento.
 
-    // Running totals updated as the player collects coins and eats ghosts
-    let totalScore         = 0;
-    let collectedCoinsCount = 0;
+    const ultimaDirecaoMovimento = new THREE.Vector3(1, 0, 0);  // última direção de movimento
+    let   rotacaoPacman3D = Math.PI;  // rotação atual do modelo 3D do Pacman no eixo Y
+    let   rotacaoPacman2D = 0;        // rotação atual do sprite 2D do Pacman no eixo Z
+    const VELOCIDADE_ROTACAO_PACMAN = 12;  // radianos por segundo
 
-    // ── STEP 12: Pacman rotation tracking ────────────────────────────────────
-    // These track the current visual rotation of the pacman models so they
-    // can smoothly turn to face the direction of movement.
+    // ── PASSO 14: Pacote de vistas ────────────────────────────────────────────
+    // Construído uma vez para não ter de listar todos estes parâmetros
+    // cada vez que chamamos ativarVistaPerspetiva ou ativarVistaTopDown.
 
-    const lastMoveDirection = new THREE.Vector3(1, 0, 0);  // direction of last movement
-    let   pacman3DYaw = Math.PI;  // current Y-axis rotation of the 3D pacman model
-    let   pacman2DYaw = 0;        // current Z-axis rotation of the 2D pacman sprite
-    const PACMAN_TURN_SPEED = 12; // radians per second — how fast pacman rotates
-
-    // ── STEP 13: Bundle of scene objects used for view switching ─────────────
-    // Building this once means we don't have to list all these params every time
-    // we call activatePerspectiveView or activateOrthographicView.
-
-    const viewBundle = {
-        controls, perspectiveCamera, orthographicCamera,
-        minimapRoot,
-        floor, floorMaterialPerspective, floorMaterialOrthographic,
-        ceiling, mapConfig, sceneFog, scene,
-        ghosts, ghost2DModels, pacman2D, pacman3D,
-        mazeGroup, wallMaterialPerspective, wallMaterialOrthographic,
-        activeState
+    const pacoteVistas = {
+        controlos, cameraPerspetiva, cameraTopDown,
+        raizMinimapa,
+        chao, materialChaoPersp, materialChaoTop,
+        teto, configuracaoMapa, nevoeiroJogo, cena,
+        fantasmas, modelos2DFantasmas, pacman2D, pacman3D,
+        grupoLabirinto, materialParedePersp, materialParedeTop,
+        estadoAtivo
     };
 
-    // ── STEP 14: Start coin flip timer ────────────────────────────────────────
-    // The first flip happens after 30 seconds. After that, flips repeat every 30 seconds.
+    // ── PASSO 15: Temporizador da moeda ───────────────────────────────────────
+    // O primeiro lançamento ocorre após 30 segundos.
+    // Depois repete a cada 30 segundos.
 
-    function runCoinFlip() {
-        triggerCoinFlipCycle(ghostModeState, COIN_FLIP_SETTINGS, powerState, gameState, coinWrapper, coinInner);
+    function executarLancamentoMoeda() {
+        iniciarCicloMoeda(estadoModoFantasma, CONFIGURACOES_MOEDA, estadoPoder, estadoJogo, contentorMoeda, interiorMoeda);
     }
 
     setTimeout(() => {
-        runCoinFlip();
-        setInterval(runCoinFlip, COIN_FLIP_SETTINGS.intervalMs);
-    }, COIN_FLIP_SETTINGS.intervalMs);
+        executarLancamentoMoeda();
+        setInterval(executarLancamentoMoeda, CONFIGURACOES_MOEDA.intervalMs);
+    }, CONFIGURACOES_MOEDA.intervalMs);
 
-    // ── STEP 15: Keyboard controls ────────────────────────────────────────────
+    // ── PASSO 16: Controlos de teclado ────────────────────────────────────────
 
-    window.addEventListener('keydown', (event) => {
-        // Escape: toggle pause menu
-        if (event.code === 'Escape') {
-            event.preventDefault();
-            if (gameState.status === 'playing') {
-                openPauseMenu(gameState, controls, pauseElements.pauseRoot, pauseElements.pausePanels, pauseElements.pauseBackButton);
-            } else if (gameState.status === 'paused') {
-                // If a sub-panel is open (back button visible), go back to main pause panel
-                if (pauseElements.pauseBackButton && !pauseElements.pauseBackButton.classList.contains('is-hidden')) {
-                    showPauseSubView('pause-main', pauseElements.pauseRoot, pauseElements.pausePanels, pauseElements.pauseBackButton);
+    window.addEventListener('keydown', (evento) => {
+        // Escape: abrir/fechar menu de pausa
+        if (evento.code === 'Escape') {
+            evento.preventDefault();
+            if (estadoJogo.estado === 'a-jogar') {
+                abrirMenuPausa(estadoJogo, controlos, menuPausa.raizPausa, menuPausa.paineis, menuPausa.botaoVoltar);
+            } else if (estadoJogo.estado === 'pausado') {
+                // Se um sub-painel estiver aberto (botão voltar visível), voltar ao painel principal
+                if (menuPausa.botaoVoltar && !menuPausa.botaoVoltar.classList.contains('is-hidden')) {
+                    mostrarSubPainelPausa('pause-main', menuPausa.raizPausa, menuPausa.paineis, menuPausa.botaoVoltar);
                 } else {
-                    closePauseMenu(gameState, powerState, pauseElements.pauseRoot);
+                    fecharMenuPausa(estadoJogo, estadoPoder, menuPausa.raizPausa);
                 }
             }
             return;
         }
 
-        // R: reload the page (quick restart)
-        if (event.code === 'KeyR') { window.location.reload(); return; }
+        // R: recarregar a página (reinício rápido)
+        if (evento.code === 'KeyR') { window.location.reload(); return; }
 
-        // WASD: movement
-        if (event.code === 'KeyW') { controls.forward  = true; return; }
-        if (event.code === 'KeyS') { controls.backward = true; return; }
-        if (event.code === 'KeyA') { controls.left     = true; return; }
-        if (event.code === 'KeyD') { controls.right    = true; return; }
+        // WASD: movimento
+        if (evento.code === 'KeyW') { controlos.forward  = true; return; }
+        if (evento.code === 'KeyS') { controlos.backward = true; return; }
+        if (evento.code === 'KeyA') { controlos.left     = true; return; }
+        if (evento.code === 'KeyD') { controlos.right    = true; return; }
 
-        // Space: toggle between 3D perspective and 2D top-down view
-        if (event.code === 'Space') {
-            event.preventDefault();
-            if (activeState.view === 'perspective') {
-                activateOrthographicView(viewBundle);
+        // Espaço: alternar entre vista 3D em perspetiva e vista 2D de topo
+        if (evento.code === 'Space') {
+            evento.preventDefault();
+            if (estadoAtivo.vista === 'perspetiva') {
+                ativarVistaTopDown(pacoteVistas);
             } else {
-                activatePerspectiveView(viewBundle);
+                ativarVistaPerspetiva(pacoteVistas);
             }
         }
     });
 
-    window.addEventListener('keyup', (event) => {
-        if (event.code === 'KeyW') { controls.forward  = false; }
-        if (event.code === 'KeyS') { controls.backward = false; }
-        if (event.code === 'KeyA') { controls.left     = false; }
-        if (event.code === 'KeyD') { controls.right    = false; }
+    window.addEventListener('keyup', (evento) => {
+        if (evento.code === 'KeyW') { controlos.forward  = false; }
+        if (evento.code === 'KeyS') { controlos.backward = false; }
+        if (evento.code === 'KeyA') { controlos.left     = false; }
+        if (evento.code === 'KeyD') { controlos.right    = false; }
     });
 
-    // ── STEP 16: Mouse drag controls (rotate camera in 3D view) ──────────────
+    // ── PASSO 17: Controlos de rato (rodar câmara na vista 3D) ───────────────
 
-    renderer.domElement.addEventListener('pointerdown', (event) => {
-        if (activeState.view !== 'perspective' || gameState.status !== 'playing') return;
-        controls.dragging  = true;
-        controls.previousX = event.clientX;
-        controls.previousY = event.clientY;
-        renderer.domElement.setPointerCapture(event.pointerId);
+    renderizador.domElement.addEventListener('pointerdown', (evento) => {
+        if (estadoAtivo.vista !== 'perspetiva' || estadoJogo.estado !== 'a-jogar') return;
+        controlos.dragging  = true;
+        controlos.previousX = evento.clientX;
+        controlos.previousY = evento.clientY;
+        renderizador.domElement.setPointerCapture(evento.pointerId);
     });
 
-    renderer.domElement.addEventListener('pointermove', (event) => {
-        if (!controls.dragging || activeState.view !== 'perspective' || gameState.status !== 'playing') return;
-        const deltaX = event.clientX - controls.previousX;
-        const deltaY = event.clientY - controls.previousY;
-        controls.yaw   -= deltaX * playerSettings.mouseSensitivity;
-        controls.pitch -= deltaY * playerSettings.mouseSensitivity;
-        controls.pitch  = Math.max(-1.25, Math.min(1.25, controls.pitch));  // clamp to prevent flipping
-        controls.previousX = event.clientX;
-        controls.previousY = event.clientY;
+    renderizador.domElement.addEventListener('pointermove', (evento) => {
+        if (!controlos.dragging || estadoAtivo.vista !== 'perspetiva' || estadoJogo.estado !== 'a-jogar') return;
+        const deltaX = evento.clientX - controlos.previousX;
+        const deltaY = evento.clientY - controlos.previousY;
+        controlos.yaw   -= deltaX * playerSettings.mouseSensitivity;
+        controlos.pitch -= deltaY * playerSettings.mouseSensitivity;
+        controlos.pitch  = Math.max(-1.25, Math.min(1.25, controlos.pitch));  // limitar para não virar ao contrário
+        controlos.previousX = evento.clientX;
+        controlos.previousY = evento.clientY;
     });
 
-    renderer.domElement.addEventListener('pointerup', (event) => {
-        controls.dragging = false;
-        renderer.domElement.releasePointerCapture(event.pointerId);
+    renderizador.domElement.addEventListener('pointerup', (evento) => {
+        controlos.dragging = false;
+        renderizador.domElement.releasePointerCapture(evento.pointerId);
     });
 
-    // ── STEP 17: Window resize handler ───────────────────────────────────────
+    // ── PASSO 18: Redimensionamento da janela ─────────────────────────────────
 
     window.addEventListener('resize', () => {
-        handleWindowResize({ renderer, perspectiveCamera, orthographicCamera, minimapRenderer, minimapRoot, mazeHeight });
+        tratarRedimensionamento({ renderizador, cameraPerspetiva, cameraTopDown, renderizadorMinimapa, raizMinimapa, alturaLabirinto });
     });
 
-    // ── STEP 18: Pause / gameover button wiring ───────────────────────────────
+    // ── PASSO 19: Ligação dos botões de pausa e fim de jogo ───────────────────
 
-    pauseElements.pauseContinueButton?.addEventListener('click', () => closePauseMenu(gameState, powerState, pauseElements.pauseRoot));
-    pauseElements.pauseControlsButton?.addEventListener('click', () => showPauseSubView('pause-controls', pauseElements.pauseRoot, pauseElements.pausePanels, pauseElements.pauseBackButton));
-    pauseElements.pauseExitButton?.addEventListener('click',     () => window.location.reload());
-    pauseElements.pauseBackButton?.addEventListener('click',     () => showPauseSubView('pause-main',     pauseElements.pauseRoot, pauseElements.pausePanels, pauseElements.pauseBackButton));
+    menuPausa.botaoContinuar?.addEventListener('click', () => fecharMenuPausa(estadoJogo, estadoPoder, menuPausa.raizPausa));
+    menuPausa.botaoControlos?.addEventListener('click', () => mostrarSubPainelPausa('pause-controls', menuPausa.raizPausa, menuPausa.paineis, menuPausa.botaoVoltar));
+    menuPausa.botaoSair?.addEventListener('click',      () => window.location.reload());
+    menuPausa.botaoVoltar?.addEventListener('click',    () => mostrarSubPainelPausa('pause-main',     menuPausa.raizPausa, menuPausa.paineis, menuPausa.botaoVoltar));
 
-    gameoverElements.gameoverNewButton?.addEventListener('click',  () => window.location.reload());
-    gameoverElements.gameoverExitButton?.addEventListener('click', () => window.location.reload());
+    elementosFimJogo.botaoNovoJogo?.addEventListener('click',   () => window.location.reload());
+    elementosFimJogo.botaoSairFimJogo?.addEventListener('click', () => window.location.reload());
 
-    // ── STEP 19: The game loop ────────────────────────────────────────────────
-    // This function is called ~60 times per second by requestAnimationFrame.
-    // It updates every moving part of the game and then draws the frame.
+    // ── PASSO 20: O ciclo do jogo ─────────────────────────────────────────────
+    // Esta função é chamada ~60 vezes por segundo por requestAnimationFrame.
+    // Atualiza cada parte móvel do jogo e depois desenha o fotograma.
 
-    const clock = new THREE.Clock();
+    const relogio = new THREE.Clock();
 
-    function animate() {
-        const deltaSeconds = clock.getDelta();       // seconds since last frame (~0.016 at 60fps)
-        const now          = performance.now();      // milliseconds since page load
+    function animar() {
+        const segundosDesdeUltimoFotograma = relogio.getDelta();  // segundos desde o último fotograma (~0.016 a 60fps)
+        const agora                        = performance.now();   // milissegundos desde o carregamento da página
 
-        // Only update gameplay logic while the game is actively being played
-        if (gameState.status === 'playing') {
+        // Só atualizar a mecânica de jogo enquanto o jogo está a decorrer ativamente
+        if (estadoJogo.estado === 'a-jogar') {
 
-            // Remember where the camera was before movement so we can detect displacement
-            const prevCameraX = perspectiveCamera.position.x;
-            const prevCameraZ = perspectiveCamera.position.z;
+            // Guardar onde a câmara estava antes do movimento para detetar deslocamento
+            const xCameraAnterior = cameraPerspetiva.position.x;
+            const zCameraAnterior = cameraPerspetiva.position.z;
 
-            // Animate coins (bobbing/spinning effect)
-            updateCoins({ elapsedSeconds: clock.elapsedTime, coins, view: activeState.view });
+            // Animar moedas (efeito de bóia/rotação)
+            updateCoins({ elapsedSeconds: relogio.elapsedTime, coins: moedas, view: estadoAtivo.vista === 'perspetiva' ? 'perspective' : 'orthographic' });
 
-            // Move the player based on currently held keys and mouse look
-            updatePlayer({ deltaSeconds, controls, camera: perspectiveCamera, mazeLayout });
+            // Mover o jogador com base nas teclas premidas e no olhar do rato
+            updatePlayer({ deltaSeconds: segundosDesdeUltimoFotograma, controls: controlos, camera: cameraPerspetiva, mazeLayout: layoutLabirinto });
 
-            // Update the power mode countdown timer (also ends power mode when it expires)
-            tickPowerMode(now, powerState, powerTimerElement, ghosts, ghost2DModels, setGhostState, setGhost2DState);
+            // Atualizar o temporizador do modo poder (também termina o modo quando expira)
+            atualizarPoder(agora, estadoPoder, elementoTemporizador, fantasmas, modelos2DFantasmas, setGhostState, setGhost2DState);
 
-            // Move all enemies; their behavior depends on the current ghost mode
+            // Mover todos os inimigos; o comportamento depende do modo atual dos fantasmas
             updateGhosts({
-                deltaSeconds, ghosts, mazeLayout,
-                tileSize: TILE_SIZE, centerMarkerCell,
-                mode: ghostModeState.ghostMode,
+                deltaSeconds: segundosDesdeUltimoFotograma,
+                ghosts: fantasmas,
+                mazeLayout: layoutLabirinto,
+                tileSize: TAMANHO_CELULA,
+                centerMarkerCell: celulaCentro,
+                mode: estadoModoFantasma.modoFantasma,
                 targetCell: {
-                    row:    Math.round(perspectiveCamera.position.z / TILE_SIZE),
-                    column: Math.round(perspectiveCamera.position.x / TILE_SIZE)
+                    row:    Math.round(cameraPerspetiva.position.z / TAMANHO_CELULA),
+                    column: Math.round(cameraPerspetiva.position.x / TAMANHO_CELULA)
                 },
-                // Per-ghost mode override: eyes = returning home, power mode active = flee
-                modeResolver: (ghost) => {
-                    if (ghost.userData.state === 'eyes') return 'return';
-                    if (powerState.active)               return 'flee';
-                    return ghostModeState.ghostMode;
+                // Substituição de modo por fantasma: eyes = a regressar, poder ativo = fugir
+                modeResolver: (fantasma) => {
+                    if (fantasma.userData.state === 'eyes') return 'return';
+                    if (estadoPoder.ativo)                  return 'flee';
+                    return estadoModoFantasma.modoFantasma;
                 },
-                // Per-ghost target override: eyes = go home, otherwise = chase player
-                targetResolver: (ghost) => {
-                    if (ghost.userData.state === 'eyes' && centerMarkerCell) return centerMarkerCell;
+                // Substituição de alvo por fantasma: eyes = regressar à base, senão = perseguir jogador
+                targetResolver: (fantasma) => {
+                    if (fantasma.userData.state === 'eyes' && celulaCentro) return celulaCentro;
                     return {
-                        row:    Math.round(perspectiveCamera.position.z / TILE_SIZE),
-                        column: Math.round(perspectiveCamera.position.x / TILE_SIZE)
+                        row:    Math.round(cameraPerspetiva.position.z / TAMANHO_CELULA),
+                        column: Math.round(cameraPerspetiva.position.x / TAMANHO_CELULA)
                     };
                 }
             });
 
-            // Detect if the player moved this frame (used to orient the pacman model)
-            const movedX = perspectiveCamera.position.x - prevCameraX;
-            const movedZ = perspectiveCamera.position.z - prevCameraZ;
-            if (movedX * movedX + movedZ * movedZ > 1e-6) {
-                lastMoveDirection.set(movedX, 0, movedZ).normalize();
+            // Detetar se o jogador se moveu neste fotograma (para orientar o modelo do Pacman)
+            const movimentoX = cameraPerspetiva.position.x - xCameraAnterior;
+            const movimentoZ = cameraPerspetiva.position.z - zCameraAnterior;
+            if (movimentoX * movimentoX + movimentoZ * movimentoZ > 1e-6) {
+                ultimaDirecaoMovimento.set(movimentoX, 0, movimentoZ).normalize();
             }
 
-            // Smoothly rotate the 3D pacman model to face the camera's look direction
-            const target3DYaw = controls.yaw + Math.PI;
-            pacman3DYaw      = stepTowardAngle(pacman3DYaw, target3DYaw, PACMAN_TURN_SPEED * deltaSeconds);
-            pacman3D.rotation.y = pacman3DYaw;
+            // Rodar suavemente o modelo 3D do Pacman para a direção em que a câmara aponta
+            const alvo3DYaw  = controlos.yaw + Math.PI;
+            rotacaoPacman3D  = avancarParaAngulo(rotacaoPacman3D, alvo3DYaw, VELOCIDADE_ROTACAO_PACMAN * segundosDesdeUltimoFotograma);
+            pacman3D.rotation.y = rotacaoPacman3D;
 
-            // Smoothly rotate the 2D pacman sprite to face the direction of movement
-            let target2DYaw = pacman2DYaw;
-            if (Math.abs(lastMoveDirection.x) >= Math.abs(lastMoveDirection.z)) {
-                // Moving horizontally — face left or right; flip the sprite instead of rotating
-                target2DYaw = 0;
-                pacman2D.scale.x = lastMoveDirection.x >= 0 ? 1 : -1;
+            // Rodar suavemente o sprite 2D do Pacman para a direção de movimento
+            let alvo2DYaw = rotacaoPacman2D;
+            if (Math.abs(ultimaDirecaoMovimento.x) >= Math.abs(ultimaDirecaoMovimento.z)) {
+                // Movimento horizontal — virar para a esquerda ou direita; inverter o sprite
+                alvo2DYaw = 0;
+                pacman2D.scale.x = ultimaDirecaoMovimento.x >= 0 ? 1 : -1;
             } else {
-                // Moving vertically — face up or down
+                // Movimento vertical — virar para cima ou para baixo
                 pacman2D.scale.x = 1;
-                target2DYaw = lastMoveDirection.z <= 0 ? -3 * Math.PI / 2 : -Math.PI / 2;
+                alvo2DYaw = ultimaDirecaoMovimento.z <= 0 ? -3 * Math.PI / 2 : -Math.PI / 2;
             }
-            pacman2DYaw         = stepTowardAngle(pacman2DYaw, target2DYaw, PACMAN_TURN_SPEED * deltaSeconds);
-            pacman2D.rotation.z = pacman2DYaw;
+            rotacaoPacman2D         = avancarParaAngulo(rotacaoPacman2D, alvo2DYaw, VELOCIDADE_ROTACAO_PACMAN * segundosDesdeUltimoFotograma);
+            pacman2D.rotation.z = rotacaoPacman2D;
 
-            // Sync 2D ghost sprite positions to their 3D counterparts
-            for (let index = 0; index < ghosts.length; index += 1) {
-                const ghost   = ghosts[index];
-                const ghost2D = ghost2DModels[index];
-                ghost2D.position.set(ghost.position.x, TILE_SIZE * 0.02, ghost.position.z);
+            // Sincronizar as posições dos sprites 2D dos fantasmas com os modelos 3D
+            for (let i = 0; i < fantasmas.length; i += 1) {
+                const fantasma   = fantasmas[i];
+                const fantasma2D = modelos2DFantasmas[i];
+                fantasma2D.position.set(fantasma.position.x, TAMANHO_CELULA * 0.02, fantasma.position.z);
 
-                // If an eaten ghost (eyes) has reached the home box, revive it
-                if (ghost.userData.state === 'eyes' && isGhostInsideCenterBox(ghost, centerMarkerCell, TILE_SIZE)) {
-                    setGhostState(ghost, 'normal');
-                    setGhost2DState(ghost2D, 'normal', ghost.userData.color);
-                    ghost.userData.hasLeftBox = false;
-                    ghost.userData.canTurn    = true;
-                    ghost.userData.direction  = { row: 0, column: 0 };
+                // Se um fantasma comido (eyes) chegou à base, ressuscitá-lo
+                if (fantasma.userData.state === 'eyes' && isGhostInsideCenterBox(fantasma, celulaCentro, TAMANHO_CELULA)) {
+                    setGhostState(fantasma, 'normal');
+                    setGhost2DState(fantasma2D, 'normal', fantasma.userData.color);
+                    fantasma.userData.hasLeftBox = false;
+                    fantasma.userData.canTurn    = true;
+                    fantasma.userData.direction  = { row: 0, column: 0 };
                 }
             }
 
-            // Check for ghost–player collision
-            const playerX = perspectiveCamera.position.x;
-            const playerZ = perspectiveCamera.position.z;
-            const collidingGhostIndex = getCollidingGhostIndex(playerX, playerZ, playerSettings.playerRadius, ghosts);
+            // Verificar colisão fantasma–jogador
+            const xJogador = cameraPerspetiva.position.x;
+            const zJogador = cameraPerspetiva.position.z;
+            const indiceColisao = obterIndiceColisaoFantasma(xJogador, zJogador, playerSettings.playerRadius, fantasmas);
 
-            if (collidingGhostIndex >= 0) {
-                const touchedGhost = ghosts[collidingGhostIndex];
-                if (powerState.active && touchedGhost.userData.state !== 'eyes') {
-                    // Power mode active: eat the ghost for escalating bonus points
-                    setGhostState(touchedGhost, 'eyes');
-                    setGhost2DState(ghost2DModels[collidingGhostIndex], 'eyes', touchedGhost.userData.color);
-                    const bonus  = POWER_MODE_SETTINGS.baseGhostPoints * Math.pow(2, powerState.eatStreak);
-                    powerState.eatStreak += 1;
-                    totalScore  += bonus;
-                    updateScoreDisplay(scoreElement, totalScore);
-                } else if (touchedGhost.userData.state !== 'eyes') {
-                    // Normal mode: touching a ghost ends the game
-                    endGame('lose', totalScore, mapConfig, gameState, powerState, powerTimerElement, pauseElements.pauseRoot, gameoverElements);
+            if (indiceColisao >= 0) {
+                const fantasmaTocado = fantasmas[indiceColisao];
+                if (estadoPoder.ativo && fantasmaTocado.userData.state !== 'eyes') {
+                    // Modo poder ativo: comer o fantasma por pontos bónus crescentes
+                    setGhostState(fantasmaTocado, 'eyes');
+                    setGhost2DState(modelos2DFantasmas[indiceColisao], 'eyes', fantasmaTocado.userData.color);
+                    const bonus = CONFIGURACOES_PODER.baseGhostPoints * Math.pow(2, estadoPoder.sequenciaFantasmas);
+                    estadoPoder.sequenciaFantasmas += 1;
+                    pontuacaoTotal  += bonus;
+                    atualizarPontuacao(elementoPontuacao, pontuacaoTotal);
+                } else if (fantasmaTocado.userData.state !== 'eyes') {
+                    // Modo normal: tocar num fantasma termina o jogo
+                    terminarJogo('derrota', pontuacaoTotal, configuracaoMapa, estadoJogo, estadoPoder, elementoTemporizador, menuPausa.raizPausa, elementosFimJogo);
                 }
             }
 
-            // Check for coin collection
-            const coinResult = collectCoins({
-                playerX, playerZ,
+            // Verificar apanha de moedas
+            const resultadoMoedas = collectCoins({
+                playerX: xJogador, playerZ: zJogador,
                 playerRadius: playerSettings.playerRadius,
-                coins
+                coins: moedas
             });
 
-            if (coinResult.collectedCount > 0) {
-                collectedCoinsCount += coinResult.collectedCount;
-                // Normal coins = 1 pt each; power coins = 5 pts each
-                const normalCoinCount = coinResult.collectedCount - coinResult.powerCollected;
-                totalScore += normalCoinCount + coinResult.powerCollected * 5;
-                updateScoreDisplay(scoreElement, totalScore);
+            if (resultadoMoedas.collectedCount > 0) {
+                moedasApanhadas += resultadoMoedas.collectedCount;
+                // Moedas normais = 1 pt cada; moedas de poder = 5 pts cada
+                const moedasNormais = resultadoMoedas.collectedCount - resultadoMoedas.powerCollected;
+                pontuacaoTotal += moedasNormais + resultadoMoedas.powerCollected * 5;
+                atualizarPontuacao(elementoPontuacao, pontuacaoTotal);
             }
 
-            // Eating a power coin activates power mode
-            if (coinResult.powerCollected > 0) {
-                activatePowerMode(
-                    now, powerState, POWER_MODE_SETTINGS, ghostModeState,
-                    ghosts, ghost2DModels,
-                    coinWrapper, powerTimerElement,
+            // Apanhar uma moeda de poder ativa o modo poder
+            if (resultadoMoedas.powerCollected > 0) {
+                ativarPoder(
+                    agora, estadoPoder, CONFIGURACOES_PODER, estadoModoFantasma,
+                    fantasmas, modelos2DFantasmas,
+                    contentorMoeda, elementoTemporizador,
                     setGhostState, setGhost2DState
                 );
             }
 
-            // Collected all coins = win
-            if (collectedCoinsCount >= coins.length) {
-                endGame('win', totalScore, mapConfig, gameState, powerState, powerTimerElement, pauseElements.pauseRoot, gameoverElements);
+            // Apanhar todas as moedas = vitória
+            if (moedasApanhadas >= moedas.length) {
+                terminarJogo('vitoria', pontuacaoTotal, configuracaoMapa, estadoJogo, estadoPoder, elementoTemporizador, menuPausa.raizPausa, elementosFimJogo);
             }
         }
 
-        // ── Visual updates that run even when paused ──────────────────────────
+        // ── Atualizações visuais que correm mesmo durante a pausa ────────────
 
-        // Keep the floor spotlight under the player at all times
-        playerSpotlight.position.set(perspectiveCamera.position.x, playerSpotlight.position.y, perspectiveCamera.position.z);
+        // Manter o holofote do chão sob o jogador a toda a hora
+        holofoteJogador.position.set(cameraPerspetiva.position.x, holofoteJogador.position.y, cameraPerspetiva.position.z);
 
-        // Keep the pacman models sitting at the player's world position
-        const pacman3DBaseY = pacman3D.userData.baseY ?? playerSettings.playerEyeHeight;
-        pacman3D.position.set(perspectiveCamera.position.x, pacman3DBaseY, perspectiveCamera.position.z);
+        // Manter os modelos do Pacman na posição do jogador no mundo
+        const yBasePacman3D = pacman3D.userData.baseY ?? playerSettings.playerEyeHeight;
+        pacman3D.position.set(cameraPerspetiva.position.x, yBasePacman3D, cameraPerspetiva.position.z);
 
-        const pacman2DBaseY = pacman2D.userData.baseY ?? TILE_SIZE * 0.06;
-        pacman2D.position.set(perspectiveCamera.position.x, pacman2DBaseY, perspectiveCamera.position.z);
-        minimapPacman.position.set(perspectiveCamera.position.x, pacman2DBaseY, perspectiveCamera.position.z);
+        const yBasePacman2D = pacman2D.userData.baseY ?? TAMANHO_CELULA * 0.06;
+        pacman2D.position.set(cameraPerspetiva.position.x, yBasePacman2D, cameraPerspetiva.position.z);
+        pacmanMinimapa.position.set(cameraPerspetiva.position.x, yBasePacman2D, cameraPerspetiva.position.z);
 
-        // Animate pacman's mouth: a sine wave creates the open/close cycle
-        const mouthOpenAmount = Math.abs(Math.sin(clock.elapsedTime * 7));
-        if (pacman3D.userData.mouthMesh) pacman3D.userData.mouthMesh.morphTargetInfluences[0] = mouthOpenAmount;
-        if (pacman2D.userData.mouthMesh) pacman2D.userData.mouthMesh.morphTargetInfluences[0] = mouthOpenAmount;
+        // Animar a boca do Pacman: onda sinusoidal cria o ciclo de abrir/fechar
+        const aberturasBoca = Math.abs(Math.sin(relogio.elapsedTime * 7));
+        if (pacman3D.userData.mouthMesh) pacman3D.userData.mouthMesh.morphTargetInfluences[0] = aberturasBoca;
+        if (pacman2D.userData.mouthMesh) pacman2D.userData.mouthMesh.morphTargetInfluences[0] = aberturasBoca;
 
-        // ── Draw the main view ────────────────────────────────────────────────
-        renderer.render(scene, activeState.camera);
+        // ── Desenhar a vista principal ────────────────────────────────────────
+        renderizador.render(cena, estadoAtivo.camera);
 
-        // ── Draw the minimap (in its separate canvas in the corner) ──────────
-        renderMinimap({
-            minimapRenderer, minimapCamera,
-            minimapHeight: MINIMAP_CAMERA_HEIGHT,
-            scene, mazeGroup,
-            floor, floorMaterialOrthographic,
-            ceiling,
-            wallMaterialOrthographic,
-            pacman3D, pacman2D, minimapPacman,
-            ghosts, ghost2DModels,
-            perspectiveCameraPosition: perspectiveCamera.position,
-            coins, updateCoins,
-            clock, activeView: activeState.view
+        // ── Desenhar o minimapa (no seu canvas separado no canto) ─────────────
+        renderizarMinimapa({
+            renderizadorMinimapa, cameraMinimapa,
+            alturaCamera: ALTURA_CAMERA_MINIMAPA,
+            cena, grupoLabirinto,
+            chao, materialChaoTop,
+            teto,
+            materialParedeTop,
+            pacman3D, pacman2D, pacmanMinimapa,
+            fantasmas, modelos2DFantasmas,
+            posicaoCameraPersp: cameraPerspetiva.position,
+            moedas, updateCoins,
+            relogio, vistaAtiva: estadoAtivo.vista === 'perspetiva' ? 'perspective' : 'orthographic'
         });
 
-        requestAnimationFrame(animate);
+        requestAnimationFrame(animar);
     }
 
-    // ── STEP 20: Start the game ───────────────────────────────────────────────
+    // ── PASSO 21: Arrancar o jogo ─────────────────────────────────────────────
 
-    activatePerspectiveView(viewBundle);                // set up the initial 3D view
-    handleWindowResize({ renderer, perspectiveCamera, orthographicCamera, minimapRenderer, minimapRoot, mazeHeight }); // ensure correct initial sizes
-    updateScoreDisplay(scoreElement, 0);                // show "Pontos: 0" immediately
-    animate();                                          // begin the game loop
+    ativarVistaPerspetiva(pacoteVistas);        // configurar a vista 3D inicial
+    tratarRedimensionamento({ renderizador, cameraPerspetiva, cameraTopDown, renderizadorMinimapa, raizMinimapa, alturaLabirinto });  // garantir tamanhos iniciais corretos
+    atualizarPontuacao(elementoPontuacao, 0);   // mostrar "Pontos: 0" imediatamente
+    animar();                                   // iniciar o ciclo do jogo
 }

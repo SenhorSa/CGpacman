@@ -1,159 +1,159 @@
 // minimap.js
-// Responsible for creating and rendering the minimap (the small map in the corner).
+// Responsável por criar e renderizar o minimapa (o mapa pequeno no canto do ecrã).
 //
-// The minimap is a second WebGL renderer that uses the same 3D scene but with a
-// top-down orthographic camera following the player. To render it correctly:
-//   1. We temporarily swap all materials to their flat 2D versions
-//   2. We hide the 3D character models and show the 2D flat sprites instead
-//   3. We render the scene with the minimap camera
-//   4. We restore all the original materials and visibility settings
+// O minimapa é um segundo renderizador WebGL que usa a mesma cena 3D mas com
+// uma câmara ortogonal de topo que segue o jogador. Para renderizar corretamente:
+//   1. Trocamos temporariamente todos os materiais para as versões 2D planas
+//   2. Escondemos os modelos 3D dos personagens e mostramos os sprites 2D planos
+//   3. Renderizamos a cena com a câmara do minimapa
+//   4. Restauramos todos os materiais e visibilidades originais
 //
-// This "borrow the scene" approach means the minimap stays perfectly in sync
-// with the main game world without needing a separate copy of the maze.
+// Esta abordagem de "emprestar a cena" garante que o minimapa está sempre
+// em perfeita sincronia com o mundo 3D sem necessitar de uma cópia separada.
 
 import * as THREE from 'three';
 
 // ─────────────────────────────────────────────────────────────
-// MINIMAP RENDERER SETUP
+// CRIAÇÃO DO RENDERIZADOR DO MINIMAPA
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Creates the minimap WebGL renderer and camera.
- * If the minimap canvas or container DOM elements don't exist, returns nulls
- * (the rest of the code checks for null before using these).
+ * Cria o renderizador WebGL e a câmara do minimapa.
+ * Se os elementos DOM do canvas ou do contentor não existirem, devolve nulls
+ * (o resto do código verifica null antes de usar).
  *
- * @param {number} minimapViewSize - How many world units the minimap camera shows on each side.
- *                                   Smaller = zoomed in, larger = zoomed out.
- * @param {number} minimapHeight   - How high above the ground the minimap camera floats.
+ * @param {number} tamanhoVista  - Quantas unidades do mundo a câmara do minimapa mostra de cada lado.
+ *                                 Menor = mais aproximado, maior = mais afastado.
+ * @param {number} alturaCamera  - Altura acima do chão a que a câmara do minimapa flutua.
  * @returns {{
- *   minimapRenderer: THREE.WebGLRenderer | null,
- *   minimapCamera:   THREE.OrthographicCamera | null,
- *   minimapRoot:     HTMLElement | null
+ *   renderizadorMinimapa: THREE.WebGLRenderer | null,
+ *   cameraMinimapa:       THREE.OrthographicCamera | null,
+ *   raizMinimapa:         HTMLElement | null
  * }}
  */
-export function createMinimapRenderer(minimapViewSize = 4, minimapHeight = 12) {
-    const minimapRoot   = document.getElementById('minimap');
-    const minimapCanvas = document.getElementById('minimap-canvas');
+export function criarRenderizadorMinimapa(tamanhoVista = 4, alturaCamera = 12) {
+    const raizMinimapa   = document.getElementById('minimap');
+    const canvasMinimapa = document.getElementById('minimap-canvas');
 
-    if (!minimapCanvas) {
-        return { minimapRenderer: null, minimapCamera: null, minimapRoot: null };
+    if (!canvasMinimapa) {
+        return { renderizadorMinimapa: null, cameraMinimapa: null, raizMinimapa: null };
     }
 
-    const minimapRenderer = new THREE.WebGLRenderer({
-        canvas:           minimapCanvas,
-        alpha:            true,   // transparent background so the page shows through
-        antialias:        true,
-        powerPreference:  'high-performance'
+    const renderizadorMinimapa = new THREE.WebGLRenderer({
+        canvas:          canvasMinimapa,
+        alpha:           true,   // fundo transparente para a página aparecer por baixo
+        antialias:       true,
+        powerPreference: 'high-performance'
     });
-    minimapRenderer.setClearColor(0x000000, 0);          // clear to transparent
-    minimapRenderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderizadorMinimapa.setClearColor(0x000000, 0);         // limpar com transparente
+    renderizadorMinimapa.outputColorSpace = THREE.SRGBColorSpace;
 
-    // Square orthographic camera — equal view distance in all four directions
-    const minimapCamera = new THREE.OrthographicCamera(
-        -minimapViewSize,   // left
-         minimapViewSize,   // right
-         minimapViewSize,   // top
-        -minimapViewSize,   // bottom
-        0.1,                // near clip (don't draw objects closer than this)
-        60                  // far clip
+    // Câmara ortogonal quadrada — distância de vista igual nas quatro direções
+    const cameraMinimapa = new THREE.OrthographicCamera(
+        -tamanhoVista,  // bordo esquerdo
+         tamanhoVista,  // bordo direito
+         tamanhoVista,  // bordo superior
+        -tamanhoVista,  // bordo inferior
+        0.1,            // corte próximo
+        60              // corte distante
     );
 
-    return { minimapRenderer, minimapCamera, minimapRoot };
+    return { renderizadorMinimapa, cameraMinimapa, raizMinimapa };
 }
 
 // ─────────────────────────────────────────────────────────────
-// MINIMAP RENDER
-// Called every frame. Temporarily converts the scene to 2D, renders
-// the minimap, then restores everything back to the active view state.
+// RENDERIZAÇÃO DO MINIMAPA
+// Chamada em cada fotograma. Converte temporariamente a cena para 2D,
+// renderiza o minimapa e depois restaura tudo para o estado da vista ativa.
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Renders one frame of the minimap into the minimap canvas.
+ * Renderiza um fotograma do minimapa no canvas do minimapa.
  *
- * The minimap camera follows the player from directly above.
- * To produce the correct top-down look, this function:
- *   - Removes fog (fog only makes sense in the first-person view)
- *   - Hides the 3D character models and shows the flat 2D sprites
- *   - Swaps all walls and floor to their flat 2D materials
- *   - Renders the scene with the minimap camera
- *   - Restores all changed properties to whatever they were before
+ * A câmara do minimapa segue o jogador diretamente de cima.
+ * Para produzir o aspeto correto de topo, esta função:
+ *   - Remove a névoa (a névoa só faz sentido na vista em primeira pessoa)
+ *   - Esconde os modelos 3D e mostra os sprites 2D
+ *   - Troca todas as paredes e o chão para os materiais 2D planos
+ *   - Renderiza a cena com a câmara do minimapa
+ *   - Restaura todas as propriedades alteradas para o que eram antes
  *
- * @param {object} minimapContext - All objects needed to render the minimap.
+ * @param {object} contextoMinimapa - Todos os objetos necessários para renderizar o minimapa.
  */
-export function renderMinimap({
-    minimapRenderer, minimapCamera, minimapHeight,
-    scene, mazeGroup,
-    floor, floorMaterialOrthographic,
-    ceiling,
-    wallMaterialOrthographic,
-    pacman3D, pacman2D, minimapPacman,
-    ghosts, ghost2DModels,
-    perspectiveCameraPosition,
-    coins, updateCoins,
-    clock, activeView
+export function renderizarMinimapa({
+    renderizadorMinimapa, cameraMinimapa, alturaCamera,
+    cena, grupoLabirinto,
+    chao, materialChaoTop,
+    teto,
+    materialParedeTop,
+    pacman3D, pacman2D, pacmanMinimapa,
+    fantasmas, modelos2DFantasmas,
+    posicaoCameraPersp,
+    moedas, updateCoins,
+    relogio, vistaAtiva
 }) {
-    if (!minimapRenderer || !minimapCamera) return;
+    if (!renderizadorMinimapa || !cameraMinimapa) return;
 
-    const playerX = perspectiveCameraPosition.x;
-    const playerZ = perspectiveCameraPosition.z;
+    const xJogador = posicaoCameraPersp.x;
+    const zJogador = posicaoCameraPersp.z;
 
-    // The minimap camera always sits directly above the player, looking straight down
-    minimapCamera.position.set(playerX, minimapHeight, playerZ);
-    minimapCamera.lookAt(playerX, 0, playerZ);
+    // A câmara do minimapa fica sempre diretamente acima do jogador, a olhar para baixo
+    cameraMinimapa.position.set(xJogador, alturaCamera, zJogador);
+    cameraMinimapa.lookAt(xJogador, 0, zJogador);
 
-    // ── Snapshot: remember the current state of every object we're about to change ──
-    const savedFog              = scene.fog;
-    const savedBackground       = scene.background;
-    const savedCeilingVisible   = ceiling.visible;
-    const savedFloorMaterial    = floor.material;
-    const savedPacman3DVisible  = pacman3D.visible;
-    const savedPacman2DVisible  = pacman2D.visible;
-    const savedGhostVisibility  = ghosts.map(ghost => ghost.visible);
-    const savedGhost2DVisibility = ghost2DModels.map(ghost2d => ghost2d.visible);
-    const savedWallMaterials    = mazeGroup.children.map(wall => wall.material);
+    // ── Guardar: memorizar o estado atual de tudo o que vamos alterar ──────────
+    const nevoeiroGuardado           = cena.fog;
+    const fundoGuardado              = cena.background;
+    const tetoVisivelGuardado        = teto.visible;
+    const materialChaoGuardado       = chao.material;
+    const pacman3DVisivelGuardado    = pacman3D.visible;
+    const pacman2DVisivelGuardado    = pacman2D.visible;
+    const visibilidadeFantasmas      = fantasmas.map(f => f.visible);
+    const visibilidade2DFantasmas    = modelos2DFantasmas.map(f => f.visible);
+    const materiaisParedes           = grupoLabirinto.children.map(parede => parede.material);
 
-    // ── Set up scene for top-down rendering ──
-    scene.fog        = null;    // no fog from above
-    scene.background = null;    // transparent — the minimap container has its own background
+    // ── Preparar a cena para renderização de topo ───────────────────────────
+    cena.fog        = null;   // sem névoa a partir de cima
+    cena.background = null;   // transparente — o contentor do minimapa tem o seu próprio fundo
 
-    ceiling.visible        = false;  // ceiling would block the top-down view
-    floor.material         = floorMaterialOrthographic;
-    pacman3D.visible       = false;  // hide the 3D model
-    pacman2D.visible       = false;  // hide the in-game 2D sprite too
-    minimapPacman.visible  = true;   // show the dedicated minimap player dot
+    teto.visible          = false;   // o teto bloquearia a vista de topo
+    chao.material         = materialChaoTop;
+    pacman3D.visible      = false;   // esconder o modelo 3D
+    pacman2D.visible      = false;   // esconder também o sprite 2D do jogo
+    pacmanMinimapa.visible = true;   // mostrar o ponto dedicado do minimapa
 
-    // Show 2D ghost sprites, hide 3D ghost models
-    ghosts.forEach(ghost => { ghost.visible = false; });
-    ghost2DModels.forEach(ghost2d => { ghost2d.visible = true; });
+    // Mostrar sprites 2D dos fantasmas, esconder modelos 3D
+    fantasmas.forEach(f => { f.visible = false; });
+    modelos2DFantasmas.forEach(f => { f.visible = true; });
 
-    // Swap walls to the flat unlit material
-    mazeGroup.children.forEach((wall, index) => {
-        if (wall.userData?.isPanel) return;
-        wall.material = wallMaterialOrthographic;
-        // Fix: preserve the original material reference even if it was already flat
-        savedWallMaterials[index] = savedWallMaterials[index] ?? wall.material;
+    // Trocar as paredes para o material plano não iluminado
+    grupoLabirinto.children.forEach((parede, indice) => {
+        if (parede.userData?.isPanel) return;
+        parede.material = materialParedeTop;
+        // Preservar referência ao material original mesmo que já fosse plano
+        materiaisParedes[indice] = materiaisParedes[indice] ?? parede.material;
     });
 
-    // Update coins to their 2D flat appearance for the minimap frame
-    updateCoins({ elapsedSeconds: clock.elapsedTime, coins, view: 'orthographic' });
+    // Atualizar moedas para o aspeto 2D plano para este fotograma do minimapa
+    updateCoins({ elapsedSeconds: relogio.elapsedTime, coins: moedas, view: 'orthographic' });
 
-    // ── Render ──
-    minimapRenderer.render(scene, minimapCamera);
+    // ── Renderizar ──────────────────────────────────────────────────────────
+    renderizadorMinimapa.render(cena, cameraMinimapa);
 
-    // ── Restore: put everything back exactly as it was ──
-    scene.fog        = savedFog;
-    scene.background = savedBackground;
+    // ── Restaurar: repor tudo exatamente como estava ──────────────────────
+    cena.fog        = nevoeiroGuardado;
+    cena.background = fundoGuardado;
 
-    ceiling.visible       = savedCeilingVisible;
-    floor.material        = savedFloorMaterial;
-    pacman3D.visible      = savedPacman3DVisible;
-    pacman2D.visible      = savedPacman2DVisible;
-    minimapPacman.visible = false;
+    teto.visible          = tetoVisivelGuardado;
+    chao.material         = materialChaoGuardado;
+    pacman3D.visible      = pacman3DVisivelGuardado;
+    pacman2D.visible      = pacman2DVisivelGuardado;
+    pacmanMinimapa.visible = false;
 
-    ghosts.forEach((ghost, index) => { ghost.visible = savedGhostVisibility[index]; });
-    ghost2DModels.forEach((ghost2d, index) => { ghost2d.visible = savedGhost2DVisibility[index]; });
-    mazeGroup.children.forEach((wall, index) => { wall.material = savedWallMaterials[index]; });
+    fantasmas.forEach((f, i) => { f.visible = visibilidadeFantasmas[i]; });
+    modelos2DFantasmas.forEach((f, i) => { f.visible = visibilidade2DFantasmas[i]; });
+    grupoLabirinto.children.forEach((parede, i) => { parede.material = materiaisParedes[i]; });
 
-    // Restore coins to whatever view the player is currently in
-    updateCoins({ elapsedSeconds: clock.elapsedTime, coins, view: activeView });
+    // Restaurar as moedas para a vista em que o jogador se encontra
+    updateCoins({ elapsedSeconds: relogio.elapsedTime, coins: moedas, view: vistaAtiva });
 }
