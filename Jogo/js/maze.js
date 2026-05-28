@@ -282,7 +282,7 @@ function drawDoorBase(ctx, size) {
 }
 
 /**
- * Cria a textura de porta normal (sem barricadas) num canvas de tamanho dado.
+ * Cria a textura de porta normal num canvas de tamanho dado.
  * Usada no painel decorativo em frente da sala central.
  */
 function createDoorFaceTexture(size = 512) {
@@ -294,87 +294,6 @@ function createDoorFaceTexture(size = 512) {
         return null;
     }
     drawDoorBase(ctx, size);
-    return new THREE.CanvasTexture(canvas);
-}
-
-/**
- * Cria a textura de porta barricadada: porta base com três tábuas pregadas por cima.
- * (Esta textura está disponível mas não é usada no layout padrão.)
- */
-function createBarricadedDoorFaceTexture(size = 512) {
-    const canvas = document.createElement('canvas');
-    canvas.width = size;
-    canvas.height = size;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) {
-        return null;
-    }
-    drawDoorBase(ctx, size);
-
-    const pt = Math.round(size * 0.115);
-    const nailR = Math.round(pt * 0.17);
-
-    function drawPlank(x1, y1, x2, y2) {
-        const angle = Math.atan2(y2 - y1, x2 - x1);
-        const len = Math.hypot(x2 - x1, y2 - y1);
-        const cx = (x1 + x2) / 2;
-        const cy = (y1 + y2) / 2;
-        const hw = len / 2;
-        const hh = pt / 2;
-
-        ctx.save();
-        ctx.translate(cx, cy);
-        ctx.rotate(angle);
-
-        ctx.fillStyle = '#9b6228';
-        ctx.fillRect(-hw, -hh, len, pt);
-
-        ctx.save();
-        ctx.beginPath();
-        ctx.rect(-hw, -hh, len, pt);
-        ctx.clip();
-        for (let x = -hw; x < hw; x += Math.round(size * 0.045)) {
-            ctx.strokeStyle = 'rgba(40, 18, 4, 0.22)';
-            ctx.lineWidth = 1.5;
-            ctx.beginPath();
-            ctx.moveTo(x, -hh);
-            ctx.lineTo(x + Math.round(size * 0.01), hh);
-            ctx.stroke();
-        }
-        ctx.restore();
-
-        ctx.fillStyle = 'rgba(230, 170, 90, 0.30)';
-        ctx.fillRect(-hw, -hh, len, Math.round(pt * 0.22));
-
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
-        ctx.fillRect(-hw, hh - Math.round(pt * 0.20), len, Math.round(pt * 0.20));
-
-        ctx.strokeStyle = '#5a2e08';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(-hw, -hh, len, pt);
-
-        for (const nx of [-hw + nailR * 2.2, hw - nailR * 2.2]) {
-            const ng = ctx.createRadialGradient(
-                nx - Math.round(nailR * 0.3), -Math.round(nailR * 0.3), 0,
-                nx, 0, nailR
-            );
-            ng.addColorStop(0, '#c8c8c8');
-            ng.addColorStop(0.5, '#585858');
-            ng.addColorStop(1, '#1a1a1a');
-            ctx.fillStyle = ng;
-            ctx.beginPath();
-            ctx.arc(nx, 0, nailR, 0, Math.PI * 2);
-            ctx.fill();
-        }
-
-        ctx.restore();
-    }
-
-    // Three planks: two diagonals crossing + one horizontal
-    drawPlank(size * 0.02, size * 0.72, size * 0.98, size * 0.18);
-    drawPlank(size * 0.02, size * 0.22, size * 0.98, size * 0.76);
-    drawPlank(-size * 0.02, size * 0.48, size * 1.02, size * 0.48);
-
     return new THREE.CanvasTexture(canvas);
 }
 

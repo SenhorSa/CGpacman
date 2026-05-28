@@ -56,8 +56,8 @@ const ghostFrightenedColor = 0x1e3a8a;
 const dogColors = {
     golden:  0xb07030,
     brown:   0x7a4520,
-    tawny:   0x9a5a2c,
-    caramel: 0xa06228
+    black:   0x030100,
+    grey: 0xbab8b8
 };
 
 const robotColors = {
