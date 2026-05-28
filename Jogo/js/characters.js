@@ -1678,6 +1678,7 @@ export function createCoins({
     excludedCells = [],
     centerMarkerCell = null,
     exclusionRadius = 0,
+    maxCoins = Infinity,
     powerCoinCount = 0
 }) {
     const coinRadius = tileSize * coinSettings.radiusRatio;

@@ -11,11 +11,11 @@
 //   ui.js         → pontuação, menu de pausa, ecrã de fim de jogo
 //   gameplay.js   → modo fantasmas, modo poder, moeda, colisões
 //   minimap.js    → renderização do minimapa
-//   characters.js → jogador, fantasmas, pacman, moedas  (NÃO EDITAR)
-//   maze.js       → disposição e geometria do labirinto (NÃO EDITAR)
-//   maps.js       → configurações dos mapas             (NÃO EDITAR)
-//   lights.js     → registo de luzes                    (NÃO EDITAR)
-//   scores.js     → persistência de pontuações          (NÃO EDITAR)
+//   characters.js → jogador, fantasmas, pacman, moedas  
+//   maze.js       → disposição e geometria do labirinto 
+//   maps.js       → configurações dos mapas             
+//   lights.js     → registo de luzes                    
+//   scores.js     → persistência de pontuações          
 
 import * as THREE from 'three';
 import { createMaze, getCenterMarkerCell, getMazeData } from './maze.js';
