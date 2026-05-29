@@ -306,7 +306,7 @@ export function ativarPoder(
     if (elementoTemporizador) {
         elementoTemporizador.classList.remove('is-hidden');
         const spanValor = elementoTemporizador.querySelector('.power-timer__value');
-        if (spanValor) spanValor.textContent = String(Math.ceil(configPoder.durationMs / 1000));
+        if (spanValor) spanValor.textContent = String(Math.ceil(configPoder.durationMs / 100));
     }
 
     // Colocar todos os fantasmas ainda vivos em modo de fuga

@@ -963,7 +963,7 @@ function buildRobot3D(color, tileSize) {
     // ── HEAD ────────────────────────────────────────────────────────
     const headRad = s * 0.25;
     const head = new THREE.Mesh(new THREE.SphereGeometry(headRad, 12, 9), bodyMat);
-    head.scale.set(1.0, 0.88, 0.86);
+    head.scale.set(0.86, 0.88, 0.86);
     const headY = neckY + neckH * 0.5 + headRad * 0.86;
     head.position.set(0, headY, 0);
     group.add(head);
